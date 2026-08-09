@@ -5,7 +5,7 @@ import requests
 import io
 
 # ==========================================
-# 1. PAGE CONFIGURATION & STYLES
+# 1. PAGE CONFIGURATION & MODERN CSS STYLES
 # ==========================================
 st.set_page_config(
     page_title="BOM Risk & Obsolescence Engine",
@@ -14,13 +14,61 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom CSS for modern UI design (UI layer only)
 st.markdown("""
 <style>
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 15px;
+    /* Global Background & Font Polish */
+    .main { background-color: #f8fafc; }
+    h1, h2, h3 { font-family: 'Inter', -apple-system, sans-serif; font-weight: 700; }
+    
+    /* Header Banner Styling */
+    .header-container {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        padding: 24px 32px;
+        border-radius: 12px;
+        color: white;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
+    .header-title { font-size: 28px; font-weight: 800; margin: 0; color: #ffffff; }
+    .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 6px; }
+
+    /* Custom Metric Cards */
+    .metric-card {
+        background-color: #ffffff;
         border-radius: 10px;
-        border: 1px solid #e9ecef;
+        padding: 18px 20px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .metric-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .metric-label { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-value { font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+    
+    /* Side-by-Side Inspector Spec Boxes */
+    .spec-card-orig {
+        background-color: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 10px;
+        padding: 20px;
+    }
+    .spec-card-sub {
+        background-color: #f0fdf4;
+        border: 1px solid #bbf7d0;
+        border-radius: 10px;
+        padding: 20px;
+    }
+    .spec-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+    .spec-tag {
+        display: inline-block;
+        background-color: #ffffff;
+        border-radius: 6px;
+        padding: 6px 12px;
+        margin: 4px 4px 4px 0;
+        font-size: 13px;
+        font-weight: 500;
+        border: 1px solid #e2e8f0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -84,7 +132,7 @@ def fetch_live_part_data(mpn, token):
                 return {
                     "MPN": item.get('mpn', mpn),
                     "Category": item.get('category', {}).get('name', 'Electronic Component'),
-                    "Lifecycle_Status": "Active", # Default live fallback
+                    "Lifecycle_Status": "Active",
                     "Package": "Standard",
                     "Max_Voltage_V": 12.0,
                     "Max_Current_A": 1.0,
@@ -155,20 +203,20 @@ def generate_sample_bom():
 
 def style_lifecycle(val):
     if val == "Active":
-        return "color: #2e7d32; font-weight: bold;"
+        return "color: #166534; font-weight: 700; background-color: #dcfce7; padding: 4px 8px; border-radius: 6px;"
     elif val == "NRND":
-        return "color: #f57f17; font-weight: bold;"
+        return "color: #854d0e; font-weight: 700; background-color: #fef9c3; padding: 4px 8px; border-radius: 6px;"
     elif val in ["EOL", "Obsolete"]:
-        return "color: #c62828; font-weight: bold; background-color: #ffebee;"
+        return "color: #991b1b; font-weight: 700; background-color: #fee2e2; padding: 4px 8px; border-radius: 6px;"
     return ""
 
 
 # ==========================================
-# 4. SIDEBAR & DATA LOADING
+# 4. SIDEBAR & DATA HIERARCHY PROCESSING
 # ==========================================
 st.sidebar.title("🛠️ BOM Control Panel")
 
-# API Keys input in sidebar (Optional)
+# Optional Live API Credentials Section
 st.sidebar.subheader("🌐 Live Supply Chain API (Optional)")
 client_id = st.sidebar.text_input("Nexar Client ID", type="password")
 client_secret = st.sidebar.text_input("Nexar Client Secret", type="password")
@@ -198,25 +246,37 @@ if uploaded_file is not None:
 else:
     raw_bom = generate_sample_bom()
 
-# Process BOM line items
+# STRICT HIERARCHY EVALUATION:
+# Priority 1: Local Catalog Match
+# Priority 2: Nexar API Search (if authenticated)
+# Priority 3: Fallback Parameter Rules
 processed_rows = []
 for _, row in raw_bom.iterrows():
     mpn = str(row.get("MPN", "")).strip()
     
-    # Priority 1: Search local catalog
     match = catalog_df[catalog_df["MPN"] == mpn]
     
     if not match.empty:
         merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
     elif token:
-        # Priority 2: Query Live API for unknown parts
         live_data = fetch_live_part_data(mpn, token)
         if live_data:
             merged_item = {**row.to_dict(), **live_data}
         else:
-            merged_item = {**row.to_dict(), "Lifecycle_Status": "Active", "Package": "Standard", "Substitute_MPN": f"{mpn}-ALT", "Substitute_Match_Score": 85, "Price_USD": 0.50}
+            merged_item = {
+                **row.to_dict(),
+                "Category": "General Component",
+                "Lifecycle_Status": "Active",
+                "Package": "Standard",
+                "Max_Voltage_V": 12.0,
+                "Max_Current_A": 1.0,
+                "Lead_Time_Weeks": 8,
+                "Substitute_MPN": f"{mpn}-ALT",
+                "Substitute_Package": "Standard",
+                "Substitute_Match_Score": 85,
+                "Price_USD": 0.50
+            }
     else:
-        # Priority 3: Smart Fallback for uncataloged parts
         merged_item = {
             **row.to_dict(),
             "Category": "General Component",
@@ -238,8 +298,12 @@ processed_bom = pd.DataFrame(processed_rows)
 # ==========================================
 # 5. DASHBOARD HEADER & METRICS
 # ==========================================
-st.title("⚡ BOM Risk & Component Obsolescence Engine")
-st.markdown("Analyze supply chain health, flag end-of-life components, and identify drop-in substitutes.")
+st.markdown("""
+<div class="header-container">
+    <div class="header-title">⚡ BOM Risk & Obsolescence Engine</div>
+    <div class="header-subtitle">Analyze supply chain health, flag end-of-life components, and identify drop-in substitutes.</div>
+</div>
+""", unsafe_allow_html=True)
 
 total_line_items = len(processed_bom)
 active_count = int((processed_bom["Lifecycle_Status"] == "Active").sum())
@@ -248,12 +312,17 @@ high_risk_count = int(processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete"]
 health_score = int(max(0, 100 - ((high_risk_count / total_line_items) * 100))) if total_line_items > 0 else 100
 
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Line Items", total_line_items)
-c2.metric("Active Components", active_count, delta=f"{int(active_count/total_line_items*100)}%")
-c3.metric("High Risk / Obsolete", high_risk_count, delta=f"-{high_risk_count}", delta_color="inverse")
-c4.metric("BOM Health Score", f"{health_score}%")
+with c1:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Total Components</div><div class="metric-value">{total_line_items}</div></div>', unsafe_allow_html=True)
+with c2:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Active Items</div><div class="metric-value" style="color: #16a34a;">{active_count}</div></div>', unsafe_allow_html=True)
+with c3:
+    st.markdown(f'<div class="metric-card"><div class="metric-label">High Risk / EOL</div><div class="metric-value" style="color: #dc2626;">{high_risk_count}</div></div>', unsafe_allow_html=True)
+with c4:
+    score_color = "#16a34a" if health_score > 80 else ("#ca8a04" if health_score > 50 else "#dc2626")
+    st.markdown(f'<div class="metric-card"><div class="metric-label">BOM Health Index</div><div class="metric-value" style="color: {score_color};">{health_score}%</div></div>', unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ==========================================
@@ -281,7 +350,7 @@ st.dataframe(
 # ==========================================
 # 7. SUBSTITUTE COMPARISON DRAWER
 # ==========================================
-st.markdown("---")
+st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
 
 flagged_items = processed_bom[processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])]
@@ -298,28 +367,38 @@ if len(flagged_items) > 0:
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.error(f"🔴 Original: **{orig['MPN']}**")
-        st.write(f"**Status:** {orig['Lifecycle_Status']}")
-        st.write(f"**Package:** {orig.get('Package', 'N/A')}")
-        st.write(f"**Max Voltage:** {orig.get('Max_Voltage_V', 'N/A')} V")
-        st.write(f"**Max Current:** {orig.get('Max_Current_A', 'N/A')} A")
-        st.write(f"**Lead Time:** {orig.get('Lead_Time_Weeks', 'N/A')} Weeks")
-        st.write(f"**Unit Price:** ${float(orig.get('Price_USD', 0)):.2f}")
+        st.markdown(f"""
+        <div class="spec-card-orig">
+            <div class="spec-title" style="color: #991b1b;">🔴 Original: {orig['MPN']}</div>
+            <div class="spec-tag">Status: <b>{orig['Lifecycle_Status']}</b></div>
+            <div class="spec-tag">Package: <b>{orig.get('Package', 'N/A')}</b></div>
+            <div class="spec-tag">Max Voltage: <b>{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
+            <div class="spec-tag">Max Current: <b>{orig.get('Max_Current_A', 'N/A')} A</b></div>
+            <div class="spec-tag">Lead Time: <b>{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
+            <div class="spec-tag">Unit Price: <b>${float(orig.get('Price_USD', 0)):.2f}</b></div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col_right:
-        st.success(f"🟢 Recommended Substitute: **{orig.get('Substitute_MPN', 'N/A')}**")
-        
         try:
             match_score = int(float(orig.get('Substitute_Match_Score', 85)))
         except (ValueError, TypeError):
             match_score = 85
 
-        st.progress(match_score / 100.0, text=f"**Pin-to-Pin Match Score: {match_score}%**")
-        st.write(f"**Package:** {orig.get('Substitute_Package', 'Standard')}")
-        st.write(f"**Max Voltage:** {orig.get('Max_Voltage_V', 'N/A')} V *(Matches Spec)*")
-        st.write(f"**Max Current:** {orig.get('Max_Current_A', 'N/A')} A *(Matches Spec)*")
-        st.write(f"**Estimated Lead Time:** {max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)} Weeks")
-        st.write(f"**Unit Price:** ${(float(orig.get('Price_USD', 1.0)) * 0.95):.2f}")
+        sub_price = float(orig.get('Price_USD', 1.0)) * 0.95
+        sub_lead = max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)
+        
+        st.markdown(f"""
+        <div class="spec-card-sub">
+            <div class="spec-title" style="color: #166534;">🟢 Recommended Substitute: {orig.get('Substitute_MPN', 'N/A')}</div>
+            <div class="spec-tag">Pin-to-Pin Match Score: <b>{match_score}%</b></div>
+            <div class="spec-tag">Package: <b>{orig.get('Substitute_Package', 'Standard')}</b></div>
+            <div class="spec-tag">Max Voltage: <b>{orig.get('Max_Voltage_V', 'N/A')} V (Matches Spec)</b></div>
+            <div class="spec-tag">Max Current: <b>{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
+            <div class="spec-tag">Estimated Lead Time: <b>{sub_lead} Weeks</b></div>
+            <div class="spec-tag">Unit Price: <b>${sub_price:.2f}</b></div>
+        </div>
+        """, unsafe_allow_html=True)
 
 else:
     st.info("🎉 All components in the current BOM are active! No action required.")
@@ -328,7 +407,7 @@ else:
 # ==========================================
 # 8. EXPORT FUNCTIONALITY
 # ==========================================
-st.markdown("---")
+st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📥 Export Enriched BOM Data")
 
 csv_buffer = io.StringIO()
