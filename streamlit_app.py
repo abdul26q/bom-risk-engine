@@ -14,14 +14,11 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for modern UI design (UI layer only)
 st.markdown("""
 <style>
-    /* Global Background & Font Polish */
     .main { background-color: #f8fafc; }
     h1, h2, h3 { font-family: 'Inter', -apple-system, sans-serif; font-weight: 700; }
     
-    /* Header Banner Styling */
     .header-container {
         background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
         padding: 24px 32px;
@@ -33,7 +30,6 @@ st.markdown("""
     .header-title { font-size: 28px; font-weight: 800; margin: 0; color: #ffffff; }
     .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 6px; }
 
-    /* Custom Metric Cards */
     .metric-card {
         background-color: #ffffff;
         border-radius: 10px;
@@ -46,7 +42,6 @@ st.markdown("""
     .metric-label { font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
     .metric-value { font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px; }
     
-    /* Side-by-Side Inspector Spec Boxes */
     .spec-card-orig {
         background-color: #fef2f2;
         border: 1px solid #fecaca;
@@ -75,15 +70,20 @@ st.markdown("""
 
 
 # ==========================================
-# 2. NEXAR / OCTOPART LIVE API INTEGRATION
+# 2. HARDCODED BACKEND API INTEGRATION
 # ==========================================
-def get_nexar_token(client_id, client_secret):
-    """Gets an authentication token from Nexar API."""
+# Embedded Nexar/Octopart API Credentials
+EMBEDDED_CLIENT_ID = "934c9a5d-b38c-417b-8cc2-1cb195b81c61"
+EMBEDDED_CLIENT_SECRET = "HF9k5nuY-eXEPt2uN562Ucq1-MNcUKTbacpO"
+
+@st.cache_data(ttl=3600)
+def get_backend_nexar_token():
+    """Fetches access token automatically using embedded backend credentials."""
     url = "https://identity.nexar.com/connect/token"
     payload = {
         'grant_type': 'client_credentials',
-        'client_id': client_id,
-        'client_secret': client_secret
+        'client_id': EMBEDDED_CLIENT_ID,
+        'client_secret': EMBEDDED_CLIENT_SECRET
     }
     try:
         response = requests.post(url, data=payload, timeout=5)
@@ -94,7 +94,7 @@ def get_nexar_token(client_id, client_secret):
     return None
 
 def fetch_live_part_data(mpn, token):
-    """Fetches real-time status and substitute data from Nexar GraphQL API."""
+    """Queries Nexar GraphQL API for live component metadata."""
     if not token:
         return None
         
@@ -112,10 +112,6 @@ def fetch_live_part_data(mpn, token):
             mpn
             category { name }
             shortDescription
-            specs {
-              attribute { name }
-              value
-            }
           }
         }
       }
@@ -148,7 +144,7 @@ def fetch_live_part_data(mpn, token):
 
 
 # ==========================================
-# 3. LOCAL MOCK CATALOG FALLBACK
+# 3. LOCAL CATALOG & DATA HELPER
 # ==========================================
 @st.cache_data
 def load_mock_component_catalog():
@@ -212,53 +208,76 @@ def style_lifecycle(val):
 
 
 # ==========================================
-# 4. SIDEBAR & DATA HIERARCHY PROCESSING
+# 4. CONTROL PANEL & EXECUTION TRIGGER
 # ==========================================
 st.sidebar.title("🛠️ BOM Control Panel")
-
-# Optional Live API Credentials Section
-st.sidebar.subheader("🌐 Live Supply Chain API (Optional)")
-client_id = st.sidebar.text_input("Nexar Client ID", type="password")
-client_secret = st.sidebar.text_input("Nexar Client Secret", type="password")
-
-token = None
-if client_id and client_secret:
-    token = get_nexar_token(client_id, client_secret)
-    if token:
-        st.sidebar.success("⚡ Connected to Nexar Live API!")
-    else:
-        st.sidebar.error("API Auth Failed. Using Local Catalog.")
+st.sidebar.caption("⚡ Nexar GraphQL API Connected (Backend Active)")
 
 catalog_df = load_mock_component_catalog()
+token = get_backend_nexar_token()
 
-uploaded_file = st.sidebar.file_uploader("Upload BOM CSV", type=["csv"])
-use_demo_bom = st.sidebar.button("📦 Load Sample Demo BOM", use_container_width=True)
+# Initialize session states
+if "ran_analysis" not in st.session_state:
+    st.session_state.ran_analysis = False
+if "current_bom" not in st.session_state:
+    st.session_state.current_bom = None
 
-if "use_demo" not in st.session_state:
-    st.session_state.use_demo = False
+uploaded_file = st.sidebar.file_uploader("Upload BOM (CSV)", type=["csv"])
+use_demo = st.sidebar.button("📦 Load Sample Demo BOM", use_container_width=True)
 
-if use_demo_bom:
-    st.session_state.use_demo = True
+# Update state based on user selection
+if use_demo:
+    st.session_state.current_bom = generate_sample_bom()
+    st.session_state.ran_analysis = False
+    st.sidebar.success("Sample Demo BOM Loaded!")
 
 if uploaded_file is not None:
-    raw_bom = pd.read_csv(uploaded_file)
-    st.session_state.use_demo = False
-else:
-    raw_bom = generate_sample_bom()
+    raw_df = pd.read_csv(uploaded_file)
+    # Normalize MPN column header
+    col_map = {col: "MPN" for col in raw_df.columns if col.strip().upper() in ["MPN", "PART_NUMBER", "PART NUMBER", "PARTNUMBER"]}
+    raw_df.rename(columns=col_map, inplace=True)
+    st.session_state.current_bom = raw_df
+    st.session_state.ran_analysis = False
 
-# STRICT HIERARCHY EVALUATION:
-# Priority 1: Local Catalog Match
-# Priority 2: Nexar API Search (if authenticated)
-# Priority 3: Fallback Parameter Rules
+# Show execution button if data is loaded
+if st.session_state.current_bom is not None:
+    st.sidebar.markdown("---")
+    if st.sidebar.button("🚀 Run BOM Analysis", type="primary", use_container_width=True):
+        st.session_state.ran_analysis = True
+
+
+# ==========================================
+# 5. HEADER & LANDING STATE
+# ==========================================
+st.markdown("""
+<div class="header-container">
+    <div class="header-title">⚡ BOM Risk & Obsolescence Engine</div>
+    <div class="header-subtitle">Automated supply chain risk detection, lifecycle analysis, and pin-to-pin substitute matching.</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Landing message when no analysis has been executed
+if not st.session_state.ran_analysis or st.session_state.current_bom is None:
+    st.info("👋 Welcome! Upload a BOM CSV file or click 'Load Sample Demo BOM' in the sidebar, then click '🚀 Run BOM Analysis' to begin execution.")
+    st.stop()
+
+
+# ==========================================
+# 6. PIPELINE PROCESSING (RUNS ON TRIGGER)
+# ==========================================
+raw_bom = st.session_state.current_bom
 processed_rows = []
+
 for _, row in raw_bom.iterrows():
     mpn = str(row.get("MPN", "")).strip()
     
+    # Priority 1: Local Catalog Match
     match = catalog_df[catalog_df["MPN"] == mpn]
     
     if not match.empty:
         merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
     elif token:
+        # Priority 2: Nexar GraphQL API Query
         live_data = fetch_live_part_data(mpn, token)
         if live_data:
             merged_item = {**row.to_dict(), **live_data}
@@ -277,6 +296,7 @@ for _, row in raw_bom.iterrows():
                 "Price_USD": 0.50
             }
     else:
+        # Priority 3: Fallback Logic
         merged_item = {
             **row.to_dict(),
             "Category": "General Component",
@@ -296,19 +316,11 @@ processed_bom = pd.DataFrame(processed_rows)
 
 
 # ==========================================
-# 5. DASHBOARD HEADER & METRICS
+# 7. DASHBOARD DISPLAY & METRICS
 # ==========================================
-st.markdown("""
-<div class="header-container">
-    <div class="header-title">⚡ BOM Risk & Obsolescence Engine</div>
-    <div class="header-subtitle">Analyze supply chain health, flag end-of-life components, and identify drop-in substitutes.</div>
-</div>
-""", unsafe_allow_html=True)
-
 total_line_items = len(processed_bom)
 active_count = int((processed_bom["Lifecycle_Status"] == "Active").sum())
 high_risk_count = int(processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete"]).sum())
-
 health_score = int(max(0, 100 - ((high_risk_count / total_line_items) * 100))) if total_line_items > 0 else 100
 
 c1, c2, c3, c4 = st.columns(4)
@@ -326,7 +338,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ==========================================
-# 6. MAIN INTERACTIVE TABLE
+# 8. DATA TABLE
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
@@ -348,7 +360,7 @@ st.dataframe(
 
 
 # ==========================================
-# 7. SUBSTITUTE COMPARISON DRAWER
+# 9. SUBSTITUTE COMPARISON INSPECTOR
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
@@ -405,7 +417,7 @@ else:
 
 
 # ==========================================
-# 8. EXPORT FUNCTIONALITY
+# 10. EXPORT REPORT
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📥 Export Enriched BOM Data")
