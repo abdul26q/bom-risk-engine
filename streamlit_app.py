@@ -365,15 +365,14 @@ st.dataframe(
 
 
 # ==========================================
-# 9. ISOLATED INSPECTOR (DYNAMIC DROPDOWN KEYING)
+# 9. FRAGMENTED INSPECTOR (NO PAGE REFRESH ON DROPDOWN CHANGE)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
 
-inspector_container = st.container()
-
-with inspector_container:
-    flagged_items = processed_bom[processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])].drop_duplicates(subset=["MPN"])
+@st.fragment
+def render_inspector_fragment(df):
+    flagged_items = df[df["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])].drop_duplicates(subset=["MPN"])
 
     if len(flagged_items) > 0:
         flagged_mpns = flagged_items["MPN"].tolist()
@@ -386,7 +385,7 @@ with inspector_container:
             format_func=lambda x: f"{x} ({flagged_items[flagged_items['MPN'] == x]['Lifecycle_Status'].values[0]})"
         )
 
-        orig_matches = processed_bom[processed_bom["MPN"] == selected_mpn]
+        orig_matches = df[df["MPN"] == selected_mpn]
 
         if not orig_matches.empty:
             orig = orig_matches.iloc[0]
@@ -429,6 +428,9 @@ with inspector_container:
 
     else:
         st.info("🎉 All components in the current BOM are active! No action required.")
+
+# Execute fragment
+render_inspector_fragment(processed_bom)
 
 
 # ==========================================
