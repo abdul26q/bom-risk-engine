@@ -5,7 +5,7 @@ import requests
 import io
 
 # ==========================================
-# 1. PAGE CONFIGURATION & HIGH-CONTRAST STYLES
+# 1. PAGE CONFIGURATION & STYLES
 # ==========================================
 st.set_page_config(
     page_title="BOM Risk & Obsolescence Engine",
@@ -14,6 +14,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Custom high-contrast CSS styling
 st.markdown("""
 <style>
     .main { background-color: #f8fafc; }
@@ -58,7 +59,7 @@ st.markdown("""
     .spec-tag {
         display: inline-block;
         background-color: #ffffff;
-        color: #0f172a;
+        color: #0f172a !important;
         border-radius: 6px;
         padding: 6px 12px;
         margin: 4px 4px 4px 0;
@@ -225,14 +226,23 @@ use_demo = st.sidebar.button("📦 Load Sample Demo BOM", use_container_width=Tr
 if use_demo:
     st.session_state.current_bom = generate_sample_bom()
     st.session_state.ran_analysis = False
+    if "processed_bom" in st.session_state:
+        del st.session_state["processed_bom"]
     st.sidebar.success("Sample Demo BOM Loaded!")
 
 if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
-    col_map = {col: "MPN" for col in raw_df.columns if col.strip().upper() in ["MPN", "PART_NUMBER", "PART NUMBER", "PARTNUMBER"]}
+    col_map = {}
+    for col in raw_df.columns:
+        clean_col = str(col).strip().upper()
+        if clean_col in ["MPN", "PART_NUMBER", "PART NUMBER", "PARTNUMBER", "ITEM_MPN"]:
+            col_map[col] = "MPN"
     raw_df.rename(columns=col_map, inplace=True)
+    
     st.session_state.current_bom = raw_df
     st.session_state.ran_analysis = False
+    if "processed_bom" in st.session_state:
+        del st.session_state["processed_bom"]
 
 if st.session_state.current_bom is not None:
     st.sidebar.markdown("---")
@@ -256,22 +266,39 @@ if not st.session_state.ran_analysis or st.session_state.current_bom is None:
 
 
 # ==========================================
-# 6. PIPELINE PROCESSING (RUNS ON TRIGGER)
+# 6. PIPELINE PROCESSING (CACHED IN SESSION STATE)
 # ==========================================
-raw_bom = st.session_state.current_bom
-processed_rows = []
+if "processed_bom" not in st.session_state:
+    raw_bom = st.session_state.current_bom
+    processed_rows = []
 
-for _, row in raw_bom.iterrows():
-    mpn = str(row.get("MPN", "")).strip()
-    
-    match = catalog_df[catalog_df["MPN"] == mpn]
-    
-    if not match.empty:
-        merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
-    elif token:
-        live_data = fetch_live_part_data(mpn, token)
-        if live_data:
-            merged_item = {**row.to_dict(), **live_data}
+    for _, row in raw_bom.iterrows():
+        mpn = str(row.get("MPN", "")).strip()
+        if not mpn or mpn.lower() == "nan":
+            continue
+        
+        match = catalog_df[catalog_df["MPN"] == mpn]
+        
+        if not match.empty:
+            merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
+        elif token:
+            live_data = fetch_live_part_data(mpn, token)
+            if live_data:
+                merged_item = {**row.to_dict(), **live_data}
+            else:
+                merged_item = {
+                    **row.to_dict(),
+                    "Category": "General Component",
+                    "Lifecycle_Status": "Active",
+                    "Package": "Standard",
+                    "Max_Voltage_V": 12.0,
+                    "Max_Current_A": 1.0,
+                    "Lead_Time_Weeks": 8,
+                    "Substitute_MPN": f"{mpn}-ALT",
+                    "Substitute_Package": "Standard",
+                    "Substitute_Match_Score": 85,
+                    "Price_USD": 0.50
+                }
         else:
             merged_item = {
                 **row.to_dict(),
@@ -286,23 +313,11 @@ for _, row in raw_bom.iterrows():
                 "Substitute_Match_Score": 85,
                 "Price_USD": 0.50
             }
-    else:
-        merged_item = {
-            **row.to_dict(),
-            "Category": "General Component",
-            "Lifecycle_Status": "Active",
-            "Package": "Standard",
-            "Max_Voltage_V": 12.0,
-            "Max_Current_A": 1.0,
-            "Lead_Time_Weeks": 8,
-            "Substitute_MPN": f"{mpn}-ALT",
-            "Substitute_Package": "Standard",
-            "Substitute_Match_Score": 85,
-            "Price_USD": 0.50
-        }
-    processed_rows.append(merged_item)
+        processed_rows.append(merged_item)
 
-processed_bom = pd.DataFrame(processed_rows)
+    st.session_state.processed_bom = pd.DataFrame(processed_rows)
+
+processed_bom = st.session_state.processed_bom
 
 
 # ==========================================
@@ -350,60 +365,70 @@ st.dataframe(
 
 
 # ==========================================
-# 9. SUBSTITUTE COMPARISON INSPECTOR
+# 9. ISOLATED INSPECTOR (DYNAMIC DROPDOWN KEYING)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
 
-flagged_items = processed_bom[processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])]
+inspector_container = st.container()
 
-if len(flagged_items) > 0:
-    selected_mpn = st.selectbox(
-        "Select a Flagged Component to Inspect:",
-        options=flagged_items["MPN"].tolist(),
-        format_func=lambda x: f"{x} ({flagged_items[flagged_items['MPN'] == x]['Lifecycle_Status'].values[0]})"
-    )
+with inspector_container:
+    flagged_items = processed_bom[processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])].drop_duplicates(subset=["MPN"])
 
-    orig = processed_bom[processed_bom["MPN"] == selected_mpn].iloc[0]
+    if len(flagged_items) > 0:
+        flagged_mpns = flagged_items["MPN"].tolist()
+        dropdown_key = f"select_flagged_{hash(tuple(flagged_mpns))}"
 
-    col_left, col_right = st.columns(2)
+        selected_mpn = st.selectbox(
+            "Select a Flagged Component to Inspect:",
+            options=flagged_mpns,
+            key=dropdown_key,
+            format_func=lambda x: f"{x} ({flagged_items[flagged_items['MPN'] == x]['Lifecycle_Status'].values[0]})"
+        )
 
-    with col_left:
-        st.markdown(f"""
-        <div class="spec-card-orig">
-            <div class="spec-title" style="color: #991b1b;">🔴 Original: {orig['MPN']}</div>
-            <div class="spec-tag">Status: <b style="color: #0f172a;">{orig['Lifecycle_Status']}</b></div>
-            <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Package', 'N/A')}</b></div>
-            <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
-            <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
-            <div class="spec-tag">Lead Time: <b style="color: #0f172a;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
-            <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${float(orig.get('Price_USD', 0)):.2f}</b></div>
-        </div>
-        """, unsafe_allow_html=True)
+        orig_matches = processed_bom[processed_bom["MPN"] == selected_mpn]
 
-    with col_right:
-        try:
-            match_score = int(float(orig.get('Substitute_Match_Score', 85)))
-        except (ValueError, TypeError):
-            match_score = 85
+        if not orig_matches.empty:
+            orig = orig_matches.iloc[0]
 
-        sub_price = float(orig.get('Price_USD', 1.0)) * 0.95
-        sub_lead = max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)
-        
-        st.markdown(f"""
-        <div class="spec-card-sub">
-            <div class="spec-title" style="color: #166534;">🟢 Recommended Substitute: {orig.get('Substitute_MPN', 'N/A')}</div>
-            <div class="spec-tag">Pin-to-Pin Match Score: <b style="color: #0f172a;">{match_score}%</b></div>
-            <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Substitute_Package', 'Standard')}</b></div>
-            <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V (Matches Spec)</b></div>
-            <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
-            <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
-            <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${sub_price:.2f}</b></div>
-        </div>
-        """, unsafe_allow_html=True)
+            col_left, col_right = st.columns(2)
 
-else:
-    st.info("🎉 All components in the current BOM are active! No action required.")
+            with col_left:
+                st.markdown(f"""
+                <div class="spec-card-orig">
+                    <div class="spec-title" style="color: #991b1b;">🔴 Original: {orig['MPN']}</div>
+                    <div class="spec-tag">Status: <b style="color: #0f172a;">{orig['Lifecycle_Status']}</b></div>
+                    <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Package', 'N/A')}</b></div>
+                    <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
+                    <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
+                    <div class="spec-tag">Lead Time: <b style="color: #0f172a;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${float(orig.get('Price_USD', 0)):.2f}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col_right:
+                try:
+                    match_score = int(float(orig.get('Substitute_Match_Score', 85)))
+                except (ValueError, TypeError):
+                    match_score = 85
+
+                sub_price = float(orig.get('Price_USD', 1.0)) * 0.95
+                sub_lead = max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)
+                
+                st.markdown(f"""
+                <div class="spec-card-sub">
+                    <div class="spec-title" style="color: #166534;">🟢 Recommended Substitute: {orig.get('Substitute_MPN', 'N/A')}</div>
+                    <div class="spec-tag">Pin-to-Pin Match Score: <b style="color: #0f172a;">{match_score}%</b></div>
+                    <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Substitute_Package', 'Standard')}</b></div>
+                    <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V (Matches Spec)</b></div>
+                    <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
+                    <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${sub_price:.2f}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+    else:
+        st.info("🎉 All components in the current BOM are active! No action required.")
 
 
 # ==========================================
