@@ -135,7 +135,7 @@ def compute_ai_vector_similarity(orig_item, sub_item):
         i1, i2 = float(orig_item.get('Max_Current_A', 1.0)), float(sub_item.get('Max_Current_A', 1.0))
         r1, r2 = parse_rth_value(orig_item.get('Thermal_Resistance_Rth', '65 °C/W')), parse_rth_value(sub_item.get('Thermal_Resistance_Rth', '65 °C/W'))
 
-        # Feature Normalization Range Bounds (Voltage: 150V max, Current: 35A max, Thermal: 350C/W max)
+        # Feature Normalization Range Bounds
         norm_v1, norm_v2 = v1 / 150.0, v2 / 150.0
         norm_i1, norm_i2 = i1 / 35.0, i2 / 35.0
         norm_r1, norm_r2 = r1 / 350.0, r2 / 350.0
@@ -426,26 +426,23 @@ st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 15
 # ==========================================
 st.markdown("### ⚡ Instant Single Component Inspector")
 
-# Native Streamlit Dropdown with Automatic Typeahead Search
-available_mpns = catalog_df["MPN"].tolist()
-selected_search_mpn = st.selectbox(
-    "🔍 Search or Select Component Part Number (MPN) for AI Parametric & Compliance Validation:",
-    options=available_mpns,
-    index=7,  # Defaults to LM7805CT
-    help="Type letters (e.g. 'LM' or 'IRF') to instantly filter options."
+quick_mpn = st.text_input(
+    "🔍 Search Any Global Manufacturer Part Number (MPN) via Nexar API:",
+    placeholder="e.g., LM7805CT, NE555P, ATmega328P-PU, IRF540N, STM32F401RBT6",
+    help="Type any valid part number. If not in the local catalog, TraceGuard queries the Nexar Live GraphQL API."
 )
 
-if selected_search_mpn:
-    q_clean = selected_search_mpn.strip().upper()
+if quick_mpn:
+    q_clean = quick_mpn.strip().upper()
     match = catalog_df[catalog_df["MPN"] == q_clean]
     
+    # 1. Local Catalog Match
     if not match.empty:
         item = match.iloc[0].to_dict()
         sub_match = catalog_df[catalog_df["MPN"] == item["Substitute_MPN"]]
         sub_item = sub_match.iloc[0].to_dict() if not sub_match.empty else item
         
         match_score = compute_ai_vector_similarity(item, sub_item)
-        
         orig_price_conv = float(item.get('Price_USD', 1.0)) * curr_rate
         sub_price_conv = orig_price_conv * 0.95
         sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
@@ -498,15 +495,20 @@ if selected_search_mpn:
         verdict_text = generate_ai_engineering_verdict(item['MPN'], item['Substitute_MPN'], item)
         st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
 
+    # 2. Live Nexar API Query for Global Components
     elif token:
         live = fetch_live_part_data(q_clean, token)
         if live:
             live_p = float(live['Price_USD']) * curr_rate
-            st.success(f"**Live Nexar AI Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | RoHS: **{live['RoHS_Status']}**")
+            st.success(f"🌐 **Nexar Live API Match Found:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | RoHS: **{live['RoHS_Status']}**")
+            
+            live_sub_mpn = f"{q_clean}-ALT"
+            verdict_text = generate_ai_engineering_verdict(q_clean, live_sub_mpn, live)
+            st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
         else:
-            st.warning(f"No direct catalog entry found for `{q_clean}`. Standard fallback substitute generated: `{q_clean}-ALT`.")
+            st.warning(f"No global record found on Nexar API for `{q_clean}`. Please check the Manufacturer Part Number spelling.")
     else:
-        st.info(f"Part `{q_clean}` queried — Status: **Active** | Lead Time: **8 Weeks**.")
+        st.error("Nexar API Token expired or connection unavailable.")
 
 st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 25px; margin-bottom: 25px;'>", unsafe_allow_html=True)
 
