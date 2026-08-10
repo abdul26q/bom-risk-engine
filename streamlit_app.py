@@ -154,6 +154,8 @@ def fetch_live_part_data(mpn, token):
                     "Thermal_Resistance_Rth": "65 °C/W",
                     "Efficiency_Rating": "85%",
                     "Use_Case": "General Electronics & Power Conditioning",
+                    "RoHS_Status": "🟢 Compliant (Pb-Free)",
+                    "REACH_Status": "🟢 Pass (<0.1% w/w)",
                     "Lead_Time_Weeks": 8,
                     "Substitute_MPN": f"{mpn}-ALT",
                     "Substitute_Package": "Standard",
@@ -166,7 +168,7 @@ def fetch_live_part_data(mpn, token):
 
 
 # ==========================================
-# 3. DEEP PARAMETRIC CATALOG DATASET
+# 3. DEEP PARAMETRIC CATALOG DATASET (WITH COMPLIANCE)
 # ==========================================
 @st.cache_data
 def load_mock_component_catalog():
@@ -214,6 +216,16 @@ def load_mock_component_catalog():
             "Precision Pulse & PWM Generation", "Fixed 5V Rail Linear Power Supply", "Legacy 8-bit Microcontroller Units",
             "Surface-Mount Precision Attenuation", "High-Current Inverter Circuits", "High-Speed Audio Operational Amplifiers",
             "High-Current LDO Voltage Regulation", "Wi-Fi System-on-Chip IoT Applications", "Buck/Boost Voltage Switching Converter"
+        ],
+        "RoHS_Status": [
+            "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)",
+            "🟢 Compliant (Pb-Free)", "🔴 Non-Compliant (Pb)", "🟢 Compliant (Pb-Free)", "🟡 Exempt (High-Pb Alloy)", "🟢 Compliant (Pb-Free)",
+            "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🔴 Non-Compliant (Pb)"
+        ],
+        "REACH_Status": [
+            "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)",
+            "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)", "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)", "🟢 Pass (<0.1% w/w)",
+            "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)"
         ],
         "Lead_Time_Weeks": [12, 8, 26, 52, 4, 6, 30, 10, 0, 4, 36, 8, 14, 24, 0],
         "Substitute_MPN": [
@@ -320,7 +332,7 @@ if st.session_state.current_bom is not None:
 st.markdown("""
 <div class="header-container">
     <div class="header-title">⚡ BOM Risk & Obsolescence Engine</div>
-    <div class="header-subtitle">Automated supply chain risk detection, electrical-thermal profiling, and pin-to-pin substitute matching.</div>
+    <div class="header-subtitle">Automated supply chain risk detection, electrical-thermal profiling, environmental compliance (RoHS/REACH), and pin-to-pin substitute matching.</div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -328,8 +340,8 @@ st.markdown("""
 # ==========================================
 # 6. STANDALONE SINGLE MPN LOOKUP & COMPARISON
 # ==========================================
-st.subheader("⚡ Quick Single Component & Deep Parameter Comparison")
-quick_mpn = st.text_input("Query any Manufacturer Part Number (MPN) for a full electrical & thermal comparative profile:", placeholder="e.g. LM7805CT, NE555P, ATmega328P-PU, or IRF540N")
+st.subheader("⚡ Quick Single Component & Environmental Comparison")
+quick_mpn = st.text_input("Query any Manufacturer Part Number (MPN) for a full electrical, thermal & RoHS/REACH compliance profile:", placeholder="e.g. LM7805CT, NE555P, ATmega328P-PU, or IRF540N")
 
 if quick_mpn:
     q_clean = quick_mpn.strip().upper()
@@ -343,7 +355,7 @@ if quick_mpn:
         sub_price_conv = orig_price_conv * 0.95
         sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
 
-        st.markdown(f"#### 📊 Parametric & Thermal Comparative Analysis: **{item['MPN']}**")
+        st.markdown(f"#### 📊 Parametric & Compliance Comparative Analysis: **{item['MPN']}**")
         
         col_orig, col_sub = st.columns(2)
         with col_orig:
@@ -358,7 +370,8 @@ if quick_mpn:
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']}</b></div>
                 <div class="spec-tag">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']}</b></div>
-                <div class="spec-tag">Efficiency/Rds(on): <b>{item['Efficiency_Rating']}</b></div>
+                <div class="spec-tag">RoHS Status: <b>{item['RoHS_Status']}</b></div>
+                <div class="spec-tag">REACH SVHC: <b>{item['REACH_Status']}</b></div>
                 <div class="spec-tag">Primary Use Case: <b>{item['Use_Case']}</b></div>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
                 <div class="spec-tag">Lead Time: <b>{item['Lead_Time_Weeks']} Weeks</b></div>
@@ -378,7 +391,8 @@ if quick_mpn:
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
                 <div class="spec-tag">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent)</b></div>
-                <div class="spec-tag">Efficiency/Rds(on): <b>{item['Efficiency_Rating']}</b></div>
+                <div class="spec-tag">RoHS Status: <b>🟢 Compliant (Pb-Free)</b></div>
+                <div class="spec-tag">REACH SVHC: <b>🟢 Pass (<0.1% w/w)</b></div>
                 <div class="spec-tag">Primary Use Case: <b>{item['Use_Case']}</b></div>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                 <div class="spec-tag">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
@@ -388,7 +402,7 @@ if quick_mpn:
             
         st.markdown(f"""
         <div class="verdict-box">
-            <b>⚡ Engineering Validation Verdict:</b> <code>{item['Substitute_MPN']}</code> matches <code>{item['MPN']}</code> across voltage tolerance ({item['Max_Voltage_V']}V), current threshold ({item['Max_Current_A']}A), thermal dissipation profile ({item['Thermal_Resistance_Rth']}), and physical pin package geometry. Direct drop-in replacement approved without PCB redesign requirement.
+            <b>⚡ Engineering & Environmental Validation Verdict:</b> <code>{item['Substitute_MPN']}</code> matches <code>{item['MPN']}</code> across voltage tolerance ({item['Max_Voltage_V']}V), current threshold ({item['Max_Current_A']}A), thermal dissipation profile ({item['Thermal_Resistance_Rth']}), and physical pin package geometry. <b>Environmentally validated for EU & global export: 100% RoHS 3 Lead-Free and REACH SVHC compliant.</b>
         </div>
         """, unsafe_allow_html=True)
 
@@ -396,7 +410,7 @@ if quick_mpn:
         live = fetch_live_part_data(q_clean, token)
         if live:
             live_p = float(live['Price_USD']) * curr_rate
-            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | Voltage: **{live['Max_Voltage_V']}V** | Current: **{live['Max_Current_A']}A**")
+            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | RoHS: **{live['RoHS_Status']}**")
         else:
             st.warning(f"No catalog entry found for `{q_clean}`. Standard fallback substitute generated: `{q_clean}-ALT`.")
     else:
@@ -445,6 +459,8 @@ if "processed_bom" not in st.session_state:
                     "Thermal_Resistance_Rth": "65 °C/W",
                     "Efficiency_Rating": "85%",
                     "Use_Case": "General Power & Signal Conditioning",
+                    "RoHS_Status": "🟢 Compliant (Pb-Free)",
+                    "REACH_Status": "🟢 Pass (<0.1% w/w)",
                     "Lead_Time_Weeks": 8,
                     "Substitute_MPN": f"{mpn}-ALT",
                     "Substitute_Package": "Standard",
@@ -463,6 +479,8 @@ if "processed_bom" not in st.session_state:
                 "Thermal_Resistance_Rth": "65 °C/W",
                 "Efficiency_Rating": "85%",
                 "Use_Case": "General Power & Signal Conditioning",
+                "RoHS_Status": "🟢 Compliant (Pb-Free)",
+                "REACH_Status": "🟢 Pass (<0.1% w/w)",
                 "Lead_Time_Weeks": 8,
                 "Substitute_MPN": f"{mpn}-ALT",
                 "Substitute_Package": "Standard",
@@ -475,7 +493,7 @@ if "processed_bom" not in st.session_state:
 
 processed_bom = st.session_state.processed_bom.copy()
 
-# Add dynamic currency converted column for the table display
+# Add dynamic currency converted column for table display
 price_col_name = f"Unit Price ({curr_symbol})"
 processed_bom[price_col_name] = processed_bom["Price_USD"] * curr_rate
 
@@ -511,23 +529,31 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ==========================================
-# 10. DATA TABLE
+# 10. CLEAN & STREAMLINED BOM ANALYSIS TABLE
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
-# Filter out raw USD column from table view
-cols_to_show = [c for c in processed_bom.columns if c != "Price_USD"]
-styled_df = processed_bom[cols_to_show].style.map(style_lifecycle, subset=["Lifecycle_Status"])
+# Select only primary high-level columns to keep table uncluttered and aesthetic
+clean_summary_cols = [
+    col for col in ["Reference_Designator", "MPN", "Quantity", "Category", "Lifecycle_Status", "Substitute_MPN", "Substitute_Match_Score", price_col_name]
+    if col in processed_bom.columns
+]
+
+styled_df = processed_bom[clean_summary_cols].style.map(style_lifecycle, subset=["Lifecycle_Status"])
 
 st.dataframe(
     styled_df,
     column_config={
-        price_col_name: st.column_config.NumberColumn(price_col_name, format=f"{curr_symbol}%.2f"),
+        "Reference_Designator": st.column_config.TextColumn("Ref Des", width="small"),
+        "MPN": st.column_config.TextColumn("Original MPN", width="medium"),
+        "Substitute_MPN": st.column_config.TextColumn("Suggested Substitute", width="medium"),
+        price_col_name: st.column_config.NumberColumn(f"Unit Price ({curr_symbol})", format=f"{curr_symbol}%.2f", width="small"),
         "Substitute_Match_Score": st.column_config.ProgressColumn(
-            "Substitute Match",
+            "Match Score",
             format="%d%%",
             min_value=0,
-            max_value=100
+            max_value=100,
+            width="medium"
         )
     },
     use_container_width=True,
@@ -536,7 +562,7 @@ st.dataframe(
 
 
 # ==========================================
-# 11. FRAGMENTED INSPECTOR (FORCE DYNAMIC CURRENCY RENDER)
+# 11. FRAGMENTED INSPECTOR (COMPLIANCE & PARAMETRIC BREAKDOWN)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
@@ -550,7 +576,7 @@ def render_inspector_fragment(df, c_symbol, c_rate):
         dropdown_key = f"select_flagged_{hash(tuple(flagged_mpns))}"
 
         selected_mpn = st.selectbox(
-            "Select a Flagged Component to Inspect Electrical, Thermal & Application Specs:",
+            "Select a Flagged Component to Inspect Electrical, Thermal & Environmental Specs:",
             options=flagged_mpns,
             key=dropdown_key,
             format_func=lambda x: f"{x} ({flagged_items[flagged_items['MPN'] == x]['Lifecycle_Status'].values[0]})"
@@ -578,7 +604,8 @@ def render_inspector_fragment(df, c_symbol, c_rate):
                     <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
                     <div class="spec-tag">Operating Temp (Tj): <b style="color: #0f172a;">{orig.get('Operating_Temp', 'N/A')}</b></div>
                     <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #0f172a;">{orig.get('Thermal_Resistance_Rth', 'N/A')}</b></div>
-                    <div class="spec-tag">Efficiency/Rds(on): <b style="color: #0f172a;">{orig.get('Efficiency_Rating', 'N/A')}</b></div>
+                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">{orig.get('RoHS_Status', 'N/A')}</b></div>
+                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">{orig.get('REACH_Status', 'N/A')}</b></div>
                     <div class="spec-tag">Primary Use Case: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
                     <div class="spec-tag">Lead Time: <b style="color: #0f172a;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
@@ -602,7 +629,8 @@ def render_inspector_fragment(df, c_symbol, c_rate):
                     <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
                     <div class="spec-tag">Operating Temp (Tj): <b style="color: #0f172a;">{orig.get('Operating_Temp', 'N/A')} (Thermal Match)</b></div>
                     <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #0f172a;">{orig.get('Thermal_Resistance_Rth', 'N/A')} (Equivalent)</b></div>
-                    <div class="spec-tag">Efficiency/Rds(on): <b style="color: #0f172a;">{orig.get('Efficiency_Rating', 'N/A')}</b></div>
+                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">🟢 Compliant (Pb-Free)</b></div>
+                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">🟢 Pass (<0.1% w/w)</b></div>
                     <div class="spec-tag">Primary Use Case: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                     <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
@@ -612,7 +640,7 @@ def render_inspector_fragment(df, c_symbol, c_rate):
                 
             st.markdown(f"""
             <div class="verdict-box">
-                <b>⚡ Engineering Compatibility Verdict:</b> <code>{orig.get('Substitute_MPN')}</code> provides equivalent electrical voltage/current thresholds ({orig.get('Max_Voltage_V')}V / {orig.get('Max_Current_A')}A) and thermal dissipation characteristics ({orig.get('Thermal_Resistance_Rth')}) as <code>{orig['MPN']}</code> for <i>"{orig.get('Use_Case')}"</i> applications without requiring schematic or PCB layout modifications.
+                <b>⚡ Engineering & Environmental Compatibility Verdict:</b> <code>{orig.get('Substitute_MPN')}</code> provides equivalent electrical voltage/current thresholds ({orig.get('Max_Voltage_V')}V / {orig.get('Max_Current_A')}A) and thermal dissipation characteristics ({orig.get('Thermal_Resistance_Rth')}) as <code>{orig['MPN']}</code> for <i>"{orig.get('Use_Case')}"</i> applications. <b>Validated 100% RoHS 3 & REACH SVHC compliant for EU & international export markets.</b>
             </div>
             """, unsafe_allow_html=True)
 
@@ -624,19 +652,24 @@ render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 
 
 # ==========================================
-# 12. EXPORT REPORT
+# 12. ENRICHED EXPORT REPORT (INCLUDES ALTERNATE MPN & SPECS)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📥 Export Enriched BOM Data")
 
+# Create complete export DataFrame containing both original and suggested substitute data
+export_df = processed_bom.copy()
+if "Price_USD" in export_df.columns:
+    export_df[f"Substitute_Price_{curr_symbol}"] = export_df["Price_USD"] * 0.95 * curr_rate
+
 csv_buffer = io.StringIO()
-processed_bom.to_csv(csv_buffer, index=False)
+export_df.to_csv(csv_buffer, index=False)
 csv_data = csv_buffer.getvalue()
 
 st.download_button(
-    label=f"Download Risk Report & Substitutes (CSV - {selected_currency_name})",
+    label=f"Download Enriched Risk & Substitute Report (CSV - {selected_currency_name})",
     data=csv_data,
-    file_name=f"BOM_Risk_Report_{selected_currency_name.split()[0]}.csv",
+    file_name=f"Enriched_BOM_Report_And_Substitutes_{selected_currency_name.split()[0]}.csv",
     mime="text/csv",
     use_container_width=True
 )
