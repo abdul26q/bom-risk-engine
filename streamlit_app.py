@@ -252,12 +252,11 @@ def style_lifecycle(val):
 
 
 # ==========================================
-# 4. CONTROL PANEL & CURRENCY MULTI-SELECTOR
+# 4. CONTROL PANEL & GLOBAL CURRENCY CONFIG
 # ==========================================
 st.sidebar.title("🛠️ BOM Control Panel")
 st.sidebar.caption("⚡ Nexar GraphQL API Connected (Backend Active)")
 
-# Currency configuration map
 CURRENCY_RATES = {
     "INR (₹)": {"symbol": "₹", "rate": 83.50},
     "USD ($)": {"symbol": "$", "rate": 1.00},
@@ -268,7 +267,8 @@ CURRENCY_RATES = {
 selected_currency_name = st.sidebar.selectbox(
     "🌐 Select Display Currency:",
     options=list(CURRENCY_RATES.keys()),
-    index=0  # Default to INR (₹)
+    index=0,
+    key="global_currency_selector"
 )
 
 curr_symbol = CURRENCY_RATES[selected_currency_name]["symbol"]
@@ -339,7 +339,6 @@ if quick_mpn:
         item = match.iloc[0]
         match_score = int(float(item.get('Substitute_Match_Score', 85)))
         
-        # Currency conversion calculations
         orig_price_conv = float(item.get('Price_USD', 1.0)) * curr_rate
         sub_price_conv = orig_price_conv * 0.95
         sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
@@ -396,7 +395,8 @@ if quick_mpn:
     elif token:
         live = fetch_live_part_data(q_clean, token)
         if live:
-            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Voltage: **{live['Max_Voltage_V']}V** | Current: **{live['Max_Current_A']}A** | Operating Temp: **{live['Operating_Temp']}**")
+            live_p = float(live['Price_USD']) * curr_rate
+            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | Voltage: **{live['Max_Voltage_V']}V** | Current: **{live['Max_Current_A']}A**")
         else:
             st.warning(f"No catalog entry found for `{q_clean}`. Standard fallback substitute generated: `{q_clean}-ALT`.")
     else:
@@ -475,8 +475,9 @@ if "processed_bom" not in st.session_state:
 
 processed_bom = st.session_state.processed_bom.copy()
 
-# Dynamically apply currency conversion to table pricing column
-processed_bom[f"Price_{curr_symbol}"] = processed_bom["Price_USD"] * curr_rate
+# Add dynamic currency converted column for the table display
+price_col_name = f"Unit Price ({curr_symbol})"
+processed_bom[price_col_name] = processed_bom["Price_USD"] * curr_rate
 
 
 # ==========================================
@@ -498,7 +499,7 @@ with c4:
     score_color = "#16a34a" if health_score > 80 else ("#ca8a04" if health_score > 50 else "#dc2626")
     st.markdown(f'<div class="metric-card"><div class="metric-label">BOM Health Index</div><div class="metric-value" style="color: {score_color};">{health_score}%</div></div>', unsafe_allow_html=True)
 
-# Dynamic currency business impact summary
+# Dynamic currency enterprise ROI summary
 est_savings_converted = high_risk_count * 7500 * curr_rate
 st.markdown(f"""
 <div class="impact-box">
@@ -514,13 +515,14 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
-display_cols = [c for c in processed_bom.columns if c != "Price_USD"]
-styled_df = processed_bom[display_cols].style.map(style_lifecycle, subset=["Lifecycle_Status"])
+# Filter out raw USD column from table view
+cols_to_show = [c for c in processed_bom.columns if c != "Price_USD"]
+styled_df = processed_bom[cols_to_show].style.map(style_lifecycle, subset=["Lifecycle_Status"])
 
 st.dataframe(
     styled_df,
     column_config={
-        f"Price_{curr_symbol}": st.column_config.NumberColumn(f"Unit Price ({curr_symbol})", format=f"{curr_symbol}%.2f"),
+        price_col_name: st.column_config.NumberColumn(price_col_name, format=f"{curr_symbol}%.2f"),
         "Substitute_Match_Score": st.column_config.ProgressColumn(
             "Substitute Match",
             format="%d%%",
@@ -534,7 +536,7 @@ st.dataframe(
 
 
 # ==========================================
-# 11. FRAGMENTED INSPECTOR (DYNAMIC CURRENCY PARAMETRIC BREAKDOWN)
+# 11. FRAGMENTED INSPECTOR (FORCE DYNAMIC CURRENCY RENDER)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
@@ -617,7 +619,7 @@ def render_inspector_fragment(df, c_symbol, c_rate):
     else:
         st.info("🎉 All components in the current BOM are active! No action required.")
 
-# Execute fragment
+# Execute fragment with explicit parameters
 render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 
 
