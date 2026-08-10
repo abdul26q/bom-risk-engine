@@ -252,10 +252,29 @@ def style_lifecycle(val):
 
 
 # ==========================================
-# 4. CONTROL PANEL & SIDEBAR
+# 4. CONTROL PANEL & CURRENCY MULTI-SELECTOR
 # ==========================================
 st.sidebar.title("🛠️ BOM Control Panel")
 st.sidebar.caption("⚡ Nexar GraphQL API Connected (Backend Active)")
+
+# Currency configuration map
+CURRENCY_RATES = {
+    "INR (₹)": {"symbol": "₹", "rate": 83.50},
+    "USD ($)": {"symbol": "$", "rate": 1.00},
+    "EUR (€)": {"symbol": "€", "rate": 0.92},
+    "GBP (£)": {"symbol": "£", "rate": 0.78}
+}
+
+selected_currency_name = st.sidebar.selectbox(
+    "🌐 Select Display Currency:",
+    options=list(CURRENCY_RATES.keys()),
+    index=0  # Default to INR (₹)
+)
+
+curr_symbol = CURRENCY_RATES[selected_currency_name]["symbol"]
+curr_rate = CURRENCY_RATES[selected_currency_name]["rate"]
+
+st.sidebar.markdown("---")
 
 catalog_df = load_mock_component_catalog()
 token = get_backend_nexar_token()
@@ -319,7 +338,10 @@ if quick_mpn:
     if not match.empty:
         item = match.iloc[0]
         match_score = int(float(item.get('Substitute_Match_Score', 85)))
-        sub_price = float(item.get('Price_USD', 1.0)) * 0.95
+        
+        # Currency conversion calculations
+        orig_price_conv = float(item.get('Price_USD', 1.0)) * curr_rate
+        sub_price_conv = orig_price_conv * 0.95
         sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
 
         st.markdown(f"#### 📊 Parametric & Thermal Comparative Analysis: **{item['MPN']}**")
@@ -341,7 +363,7 @@ if quick_mpn:
                 <div class="spec-tag">Primary Use Case: <b>{item['Use_Case']}</b></div>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
                 <div class="spec-tag">Lead Time: <b>{item['Lead_Time_Weeks']} Weeks</b></div>
-                <div class="spec-tag">Unit Price: <b>${float(item['Price_USD']):.2f}</b></div>
+                <div class="spec-tag">Unit Price: <b>{curr_symbol}{orig_price_conv:.2f}</b></div>
             </div>
             """, unsafe_allow_html=True)
 
@@ -356,12 +378,12 @@ if quick_mpn:
                 <div class="spec-tag">Max Voltage: <b>{item['Max_Voltage_V']} V (Fully Compatible)</b></div>
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
-                <div class="spec-tag">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent Heat Dissipation)</b></div>
+                <div class="spec-tag">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent)</b></div>
                 <div class="spec-tag">Efficiency/Rds(on): <b>{item['Efficiency_Rating']}</b></div>
                 <div class="spec-tag">Primary Use Case: <b>{item['Use_Case']}</b></div>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                 <div class="spec-tag">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
-                <div class="spec-tag">Unit Price: <b>${sub_price:.2f}</b></div>
+                <div class="spec-tag">Unit Price: <b>{curr_symbol}{sub_price_conv:.2f}</b></div>
             </div>
             """, unsafe_allow_html=True)
             
@@ -451,7 +473,10 @@ if "processed_bom" not in st.session_state:
 
     st.session_state.processed_bom = pd.DataFrame(processed_rows)
 
-processed_bom = st.session_state.processed_bom
+processed_bom = st.session_state.processed_bom.copy()
+
+# Dynamically apply currency conversion to table pricing column
+processed_bom[f"Price_{curr_symbol}"] = processed_bom["Price_USD"] * curr_rate
 
 
 # ==========================================
@@ -473,11 +498,11 @@ with c4:
     score_color = "#16a34a" if health_score > 80 else ("#ca8a04" if health_score > 50 else "#dc2626")
     st.markdown(f'<div class="metric-card"><div class="metric-label">BOM Health Index</div><div class="metric-value" style="color: {score_color};">{health_score}%</div></div>', unsafe_allow_html=True)
 
-# Business impact summary callout
-est_savings = high_risk_count * 7500
+# Dynamic currency business impact summary
+est_savings_converted = high_risk_count * 7500 * curr_rate
 st.markdown(f"""
 <div class="impact-box">
-    <b>💼 Enterprise ROI & Impact Analysis:</b> Automated pin-to-pin substitute mapping for <b>{high_risk_count} high-risk component(s)</b> avoids an estimated <b>${est_savings:,} in PCB re-layout costs</b> and prevents <b>8 to 12 weeks of factory production line downtime</b>.
+    <b>💼 Enterprise ROI & Impact Analysis:</b> Automated pin-to-pin substitute mapping for <b>{high_risk_count} high-risk component(s)</b> avoids an estimated <b>{curr_symbol}{est_savings_converted:,.2f} in PCB re-layout costs</b> and prevents <b>8 to 12 weeks of factory production line downtime</b>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -489,11 +514,13 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
-styled_df = processed_bom.style.map(style_lifecycle, subset=["Lifecycle_Status"])
+display_cols = [c for c in processed_bom.columns if c != "Price_USD"]
+styled_df = processed_bom[display_cols].style.map(style_lifecycle, subset=["Lifecycle_Status"])
+
 st.dataframe(
     styled_df,
     column_config={
-        "Price_USD": st.column_config.NumberColumn("Unit Price ($)", format="$%.2f"),
+        f"Price_{curr_symbol}": st.column_config.NumberColumn(f"Unit Price ({curr_symbol})", format=f"{curr_symbol}%.2f"),
         "Substitute_Match_Score": st.column_config.ProgressColumn(
             "Substitute Match",
             format="%d%%",
@@ -507,13 +534,13 @@ st.dataframe(
 
 
 # ==========================================
-# 11. FRAGMENTED INSPECTOR (DEEP PARAMETRIC BREAKDOWN)
+# 11. FRAGMENTED INSPECTOR (DYNAMIC CURRENCY PARAMETRIC BREAKDOWN)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
 
 @st.fragment
-def render_inspector_fragment(df):
+def render_inspector_fragment(df, c_symbol, c_rate):
     flagged_items = df[df["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])].drop_duplicates(subset=["MPN"])
 
     if len(flagged_items) > 0:
@@ -534,6 +561,10 @@ def render_inspector_fragment(df):
 
             col_left, col_right = st.columns(2)
 
+            orig_price_c = float(orig.get('Price_USD', 0)) * c_rate
+            sub_price_c = orig_price_c * 0.95
+            sub_lead = max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)
+
             with col_left:
                 st.markdown(f"""
                 <div class="spec-card-orig">
@@ -549,7 +580,7 @@ def render_inspector_fragment(df):
                     <div class="spec-tag">Primary Use Case: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
                     <div class="spec-tag">Lead Time: <b style="color: #0f172a;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
-                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${float(orig.get('Price_USD', 0)):.2f}</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">{c_symbol}{orig_price_c:.2f}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -559,9 +590,6 @@ def render_inspector_fragment(df):
                 except (ValueError, TypeError):
                     match_score = 85
 
-                sub_price = float(orig.get('Price_USD', 1.0)) * 0.95
-                sub_lead = max(2, int(orig.get('Lead_Time_Weeks', 10)) - 8)
-                
                 st.markdown(f"""
                 <div class="spec-card-sub">
                     <div class="spec-title" style="color: #166534;">🟢 Recommended Substitute: {orig.get('Substitute_MPN', 'N/A')}</div>
@@ -576,7 +604,7 @@ def render_inspector_fragment(df):
                     <div class="spec-tag">Primary Use Case: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                     <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
-                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">${sub_price:.2f}</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">{c_symbol}{sub_price_c:.2f}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -590,7 +618,7 @@ def render_inspector_fragment(df):
         st.info("🎉 All components in the current BOM are active! No action required.")
 
 # Execute fragment
-render_inspector_fragment(processed_bom)
+render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 
 
 # ==========================================
@@ -604,9 +632,9 @@ processed_bom.to_csv(csv_buffer, index=False)
 csv_data = csv_buffer.getvalue()
 
 st.download_button(
-    label="Download Risk Report & Substitutes (CSV)",
+    label=f"Download Risk Report & Substitutes (CSV - {selected_currency_name})",
     data=csv_data,
-    file_name="BOM_Risk_Report_And_Substitutes.csv",
+    file_name=f"BOM_Risk_Report_{selected_currency_name.split()[0]}.csv",
     mime="text/csv",
     use_container_width=True
 )
