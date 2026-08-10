@@ -4,14 +4,14 @@ import numpy as np
 import requests
 import io
 import re
+import os
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ==========================================
 # 1. PAGE CONFIGURATION & FORMAL STYLES
 # ==========================================
 st.set_page_config(
-    page_title="TraceGuard Engine | CODE CATALYSTS",
-    page_icon="⚡",
+    page_title="TraceGuard Engine | Code Catalysts",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -31,20 +31,9 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
         border-left: 6px solid #2563eb;
     }
-    .header-title { font-size: 30px; font-weight: 800; margin: 0; color: #ffffff; letter-spacing: -0.5px; }
-    .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 8px; font-weight: 400; }
-    .team-badge {
-        display: inline-block;
-        background-color: #2563eb;
-        color: #ffffff;
-        font-size: 11px;
-        font-weight: 700;
-        padding: 3px 10px;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 8px;
-    }
+    .header-title { font-size: 32px; font-weight: 800; margin: 0; color: #ffffff; letter-spacing: -0.5px; }
+    .header-team { font-size: 13px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; margin-bottom: 8px; }
+    .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 4px; font-weight: 400; }
 
     .metric-card {
         background-color: #ffffff;
@@ -153,7 +142,7 @@ def generate_ai_engineering_verdict(orig_mpn, sub_mpn, orig_item):
     use_case = orig_item.get('Use_Case', 'Power & Signal Conditioning')
     
     return f"""
-    <b>🤖 AI Parametric & Compliance Verdict:</b> Machine learning vector analysis confirms <code>{sub_mpn}</code> provides 100% electrical parameter alignment with <code>{orig_mpn}</code> across voltage rating ({v_spec}V), current capacity ({i_spec}A), and thermal dissipation profile ({rth_spec}) for <i>"{use_case}"</i> applications. <b>Zero PCB layout trace modification required. Certified 100% RoHS 3 Lead-Free and REACH SVHC compliant.</b>
+    <b>AI Parametric & Compliance Verdict:</b> Machine learning vector analysis confirms <code>{sub_mpn}</code> provides 100% electrical parameter alignment with <code>{orig_mpn}</code> across voltage rating ({v_spec}V), current capacity ({i_spec}A), and thermal dissipation profile ({rth_spec}) for <i>"{use_case}"</i> applications. <b>Zero PCB layout trace modification required. Certified 100% RoHS 3 Lead-Free and REACH SVHC compliant.</b>
     """
 
 
@@ -221,8 +210,8 @@ def fetch_live_part_data(mpn, token):
                     "Thermal_Resistance_Rth": "65 °C/W",
                     "Efficiency_Rating": "85%",
                     "Use_Case": "General Electronics & Power Conditioning",
-                    "RoHS_Status": "🟢 Compliant (Pb-Free)",
-                    "REACH_Status": "🟢 Pass (<0.1% w/w)",
+                    "RoHS_Status": "Compliant (Pb-Free)",
+                    "REACH_Status": "Pass (<0.1% w/w)",
                     "Lead_Time_Weeks": 8,
                     "Substitute_MPN": f"{mpn}-ALT",
                     "Substitute_Package": "Standard",
@@ -285,14 +274,14 @@ def load_mock_component_catalog():
             "High-Current LDO Voltage Regulation", "Wi-Fi System-on-Chip IoT Applications", "Buck/Boost Voltage Switching Converter"
         ],
         "RoHS_Status": [
-            "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)",
-            "🟢 Compliant (Pb-Free)", "🔴 Non-Compliant (Pb)", "🟢 Compliant (Pb-Free)", "🟡 Exempt (High-Pb Alloy)", "🟢 Compliant (Pb-Free)",
-            "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🟢 Compliant (Pb-Free)", "🔴 Non-Compliant (Pb)"
+            "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Compliant (Pb-Free)",
+            "Compliant (Pb-Free)", "Non-Compliant (Pb)", "Compliant (Pb-Free)", "Exempt (High-Pb Alloy)", "Compliant (Pb-Free)",
+            "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Compliant (Pb-Free)", "Non-Compliant (Pb)"
         ],
         "REACH_Status": [
-            "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)",
-            "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)", "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)", "🟢 Pass (<0.1% w/w)",
-            "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟢 Pass (<0.1% w/w)", "🟡 Declared (Lead SVHC)"
+            "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Pass (<0.1% w/w)",
+            "Pass (<0.1% w/w)", "Declared (Lead SVHC)", "Pass (<0.1% w/w)", "Declared (Lead SVHC)", "Pass (<0.1% w/w)",
+            "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Pass (<0.1% w/w)", "Declared (Lead SVHC)"
         ],
         "Lead_Time_Weeks": [12, 8, 26, 52, 4, 6, 30, 10, 0, 4, 36, 8, 14, 24, 0],
         "Substitute_MPN": [
@@ -309,7 +298,6 @@ def load_mock_component_catalog():
     }
     df = pd.DataFrame(catalog_data)
     
-    # Calculate AI Similarity Scores dynamically across the catalog
     scores = []
     for _, r in df.iterrows():
         sub_match = df[df["MPN"] == r["Substitute_MPN"]]
@@ -342,8 +330,8 @@ def style_lifecycle(val):
 # ==========================================
 # 5. CONTROL PANEL & GLOBAL CURRENCY CONFIG
 # ==========================================
-st.sidebar.title("🛠️ TraceGuard Control")
-st.sidebar.caption("⚡ Nexar API & AI Vector Pipeline Active")
+st.sidebar.title("TraceGuard Control")
+st.sidebar.caption("Nexar API & AI Vector Pipeline Active")
 
 CURRENCY_RATES = {
     "INR (₹)": {"symbol": "₹", "rate": 83.50},
@@ -353,7 +341,7 @@ CURRENCY_RATES = {
 }
 
 selected_currency_name = st.sidebar.selectbox(
-    "🌐 Select Display Currency:",
+    "Select Display Currency:",
     options=list(CURRENCY_RATES.keys()),
     index=0,
     key="global_currency_selector"
@@ -373,7 +361,7 @@ if "current_bom" not in st.session_state:
     st.session_state.current_bom = None
 
 uploaded_file = st.sidebar.file_uploader("Upload BOM Assembly (CSV)", type=["csv"])
-use_demo = st.sidebar.button("📦 Load Reference Benchmark BOM", use_container_width=True)
+use_demo = st.sidebar.button("Load Reference Benchmark BOM", use_container_width=True)
 
 if use_demo:
     st.session_state.current_bom = generate_sample_bom()
@@ -398,26 +386,33 @@ if uploaded_file is not None:
 
 if st.session_state.current_bom is not None:
     st.sidebar.markdown("---")
-    if st.sidebar.button("🚀 Run Full TraceGuard Analysis", type="primary", use_container_width=True):
+    if st.sidebar.button("Run Full TraceGuard Analysis", type="primary", use_container_width=True):
         st.session_state.ran_analysis = True
 
 
 # ==========================================
-# 6. HEADER BANNER WITH TEAM BRANDING
+# 6. HEADER BANNER WITH EMBEDDED LOGO
 # ==========================================
 st.markdown("""
 <div class="header-container">
-    <div class="team-badge">ENGINEERED BY CODE CATALYSTS</div>
-    <div class="header-title">⚡ TraceGuard Engine</div>
-    <div class="header-subtitle">AI Vector Matching, Automated PCB Trace Preservation & RoHS/REACH Environmental Compliance</div>
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+        <div>
+            <div class="header-team">By Code Catalysts</div>
+            <div class="header-subtitle">Intelligent Hardware Risk Engine: Pin-to-Pin Substitute Matching, Thermal Stability & Export Compliance</div>
+        </div>
+    </div>
 </div>
 """, unsafe_allow_html=True)
+
+# Render logo if available in repository
+if os.path.exists("logo.png"):
+    st.image("logo.png", width=380)
 
 
 # ==========================================
 # 7. STANDALONE SINGLE MPN LOOKUP & COMPARISON
 # ==========================================
-st.subheader("⚡ Instant Single Component Inspector")
+st.subheader("Instant Single Component Inspector")
 quick_mpn = st.text_input("Query Manufacturer Part Number (MPN) for immediate AI parametric, thermal, and compliance validation:", placeholder="e.g. LM7805CT, NE555P, ATmega328P-PU, or IRF540N")
 
 if quick_mpn:
@@ -435,13 +430,13 @@ if quick_mpn:
         sub_price_conv = orig_price_conv * 0.95
         sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
 
-        st.markdown(f"#### 📊 AI Parametric & Compliance Comparative Analysis: **{item['MPN']}**")
+        st.markdown(f"#### AI Parametric & Compliance Comparative Analysis: **{item['MPN']}**")
         
         col_orig, col_sub = st.columns(2)
         with col_orig:
             st.markdown(f"""
             <div class="spec-card-orig">
-                <div class="spec-title" style="color: #991b1b;">🔴 Queried Component: {item['MPN']}</div>
+                <div class="spec-title" style="color: #991b1b;">Queried Component: {item['MPN']}</div>
                 <div class="spec-tag">Category: <b>{item['Category']}</b></div>
                 <div class="spec-tag">Status: <b>{item['Lifecycle_Status']}</b></div>
                 <div class="spec-tag">Package: <b>{item['Package']}</b></div>
@@ -462,7 +457,7 @@ if quick_mpn:
         with col_sub:
             st.markdown(f"""
             <div class="spec-card-sub">
-                <div class="spec-title" style="color: #166534;">🟢 AI Verified Drop-In Replacement: {item['Substitute_MPN']}</div>
+                <div class="spec-title" style="color: #166534;">AI Verified Drop-In Replacement: {item['Substitute_MPN']}</div>
                 <div class="spec-tag">AI Vector Similarity Score: <b>{match_score}%</b></div>
                 <div class="spec-tag">Lifecycle Status: <b>Active</b></div>
                 <div class="spec-tag">Package: <b>{item['Substitute_Package']}</b></div>
@@ -471,8 +466,8 @@ if quick_mpn:
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
                 <div class="spec-tag">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent)</b></div>
-                <div class="spec-tag">RoHS Status: <b>🟢 Compliant (Pb-Free)</b></div>
-                <div class="spec-tag">REACH SVHC: <b>🟢 Pass (<0.1% w/w)</b></div>
+                <div class="spec-tag">RoHS Status: <b>Compliant (Pb-Free)</b></div>
+                <div class="spec-tag">REACH SVHC: <b>Pass (<0.1% w/w)</b></div>
                 <div class="spec-tag">Primary Application: <b>{item['Use_Case']}</b></div>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                 <div class="spec-tag">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
@@ -500,7 +495,7 @@ st.markdown("---")
 # 8. GUARD CHECK FOR FULL BOM ANALYSIS
 # ==========================================
 if not st.session_state.ran_analysis or st.session_state.current_bom is None:
-    st.info("👋 To perform a comprehensive **BOM Risk Analysis**, upload a CSV file or click 'Load Reference Benchmark BOM' in the sidebar, then select '🚀 Run Full TraceGuard Analysis'.")
+    st.info("To perform a comprehensive **BOM Risk Analysis**, upload a CSV file or click 'Load Reference Benchmark BOM' in the sidebar, then select 'Run Full TraceGuard Analysis'.")
     st.stop()
 
 
@@ -536,8 +531,8 @@ if "processed_bom" not in st.session_state:
                     "Thermal_Resistance_Rth": "65 °C/W",
                     "Efficiency_Rating": "85%",
                     "Use_Case": "General Power & Signal Conditioning",
-                    "RoHS_Status": "🟢 Compliant (Pb-Free)",
-                    "REACH_Status": "🟢 Pass (<0.1% w/w)",
+                    "RoHS_Status": "Compliant (Pb-Free)",
+                    "REACH_Status": "Pass (<0.1% w/w)",
                     "Lead_Time_Weeks": 8,
                     "Substitute_MPN": f"{mpn}-ALT",
                     "Substitute_Package": "Standard",
@@ -556,8 +551,8 @@ if "processed_bom" not in st.session_state:
                 "Thermal_Resistance_Rth": "65 °C/W",
                 "Efficiency_Rating": "85%",
                 "Use_Case": "General Power & Signal Conditioning",
-                "RoHS_Status": "🟢 Compliant (Pb-Free)",
-                "REACH_Status": "🟢 Pass (<0.1% w/w)",
+                "RoHS_Status": "Compliant (Pb-Free)",
+                "REACH_Status": "Pass (<0.1% w/w)",
                 "Lead_Time_Weeks": 8,
                 "Substitute_MPN": f"{mpn}-ALT",
                 "Substitute_Package": "Standard",
@@ -570,7 +565,6 @@ if "processed_bom" not in st.session_state:
 
 processed_bom = st.session_state.processed_bom.copy()
 
-# Add dynamic currency converted column for table display
 price_col_name = f"Unit Price ({curr_symbol})"
 processed_bom[price_col_name] = processed_bom["Price_USD"] * curr_rate
 
@@ -594,11 +588,10 @@ with c4:
     score_color = "#16a34a" if health_score > 80 else ("#ca8a04" if health_score > 50 else "#dc2626")
     st.markdown(f'<div class="metric-card"><div class="metric-label">BOM Health Index</div><div class="metric-value" style="color: {score_color};">{health_score}%</div></div>', unsafe_allow_html=True)
 
-# Dynamic enterprise financial impact card
 est_savings_converted = high_risk_count * 7500 * curr_rate
 st.markdown(f"""
 <div class="impact-box">
-    <b>💼 Enterprise ROI & Operations Assessment:</b> Automated drop-in substitute mapping for <b>{high_risk_count} flagged component(s)</b> prevents an estimated <b>{curr_symbol}{est_savings_converted:,.2f} in PCB re-layout costs</b> and eliminates <b>8 to 12 weeks of factory production downtime</b>.
+    <b>Enterprise ROI & Operations Assessment:</b> Automated drop-in substitute mapping for <b>{high_risk_count} flagged component(s)</b> prevents an estimated <b>{curr_symbol}{est_savings_converted:,.2f} in PCB re-layout costs</b> and eliminates <b>8 to 12 weeks of factory production downtime</b>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -608,7 +601,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 # 11. STREAMLINED BOM ANALYSIS TABLE
 # ==========================================
-st.subheader("📋 Assembly Analysis Summary")
+st.subheader("Assembly Analysis Summary")
 
 clean_summary_cols = [
     col for col in ["Reference_Designator", "MPN", "Quantity", "Category", "Lifecycle_Status", "Substitute_MPN", "Substitute_Match_Score", price_col_name]
@@ -641,7 +634,7 @@ st.dataframe(
 # 12. FRAGMENTED INSPECTOR
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("🔍 AI Parametric & Environmental Substitute Inspector")
+st.subheader("AI Parametric & Environmental Substitute Inspector")
 
 @st.fragment
 def render_inspector_fragment(df, c_symbol, c_rate):
@@ -673,7 +666,7 @@ def render_inspector_fragment(df, c_symbol, c_rate):
             with col_left:
                 st.markdown(f"""
                 <div class="spec-card-orig">
-                    <div class="spec-title" style="color: #991b1b;">🔴 Original Component: {orig['MPN']}</div>
+                    <div class="spec-title" style="color: #991b1b;">Original Component: {orig['MPN']}</div>
                     <div class="spec-tag">Status: <b style="color: #0f172a;">{orig['Lifecycle_Status']}</b></div>
                     <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Package', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
@@ -693,7 +686,7 @@ def render_inspector_fragment(df, c_symbol, c_rate):
             with col_right:
                 st.markdown(f"""
                 <div class="spec-card-sub">
-                    <div class="spec-title" style="color: #166534;">🟢 AI Verified Drop-In Replacement: {orig.get('Substitute_MPN', 'N/A')}</div>
+                    <div class="spec-title" style="color: #166534;">AI Verified Drop-In Replacement: {orig.get('Substitute_MPN', 'N/A')}</div>
                     <div class="spec-tag">AI Vector Similarity Score: <b style="color: #0f172a;">{match_score}%</b></div>
                     <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Substitute_Package', 'Standard')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
@@ -701,8 +694,8 @@ def render_inspector_fragment(df, c_symbol, c_rate):
                     <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
                     <div class="spec-tag">Operating Temp (Tj): <b style="color: #0f172a;">{orig.get('Operating_Temp', 'N/A')} (Thermal Match)</b></div>
                     <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #0f172a;">{orig.get('Thermal_Resistance_Rth', 'N/A')} (Equivalent)</b></div>
-                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">🟢 Compliant (Pb-Free)</b></div>
-                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">🟢 Pass (<0.1% w/w)</b></div>
+                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">Compliant (Pb-Free)</b></div>
+                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">Pass (<0.1% w/w)</b></div>
                     <div class="spec-tag">Primary Application: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
                     <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
                     <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
@@ -714,9 +707,8 @@ def render_inspector_fragment(df, c_symbol, c_rate):
             st.markdown(f'<div class="verdict-box">{verdict_text}</div>', unsafe_allow_html=True)
 
     else:
-        st.info("🎉 All components in the active BOM assembly are fully active and compliant.")
+        st.info("All components in the active BOM assembly are fully active and compliant.")
 
-# Execute fragment with parameters
 render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 
 
@@ -724,7 +716,7 @@ render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 # 13. ENRICHED EXPORT REPORT
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("📥 Export Verified Enriched BOM")
+st.subheader("Export Verified Enriched BOM")
 
 export_df = processed_bom.copy()
 if "Price_USD" in export_df.columns:
