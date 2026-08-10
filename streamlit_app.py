@@ -5,7 +5,6 @@ import requests
 import io
 import re
 import os
-import base64
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ==========================================
@@ -129,11 +128,9 @@ def compute_ai_vector_similarity(orig_item, sub_item):
         if orig_item.get("MPN") == sub_item.get("MPN"):
             return 100
             
-        # Explicit preset match scores if provided in catalog
         if "Substitute_Match_Score" in orig_item and str(orig_item.get("Substitute_MPN")) == str(sub_item.get("MPN")):
             return int(orig_item["Substitute_Match_Score"])
 
-        # Feature Extractor
         v1, v2 = float(orig_item.get('Max_Voltage_V', 12.0)), float(sub_item.get('Max_Voltage_V', 12.0))
         i1, i2 = float(orig_item.get('Max_Current_A', 1.0)), float(sub_item.get('Max_Current_A', 1.0))
         r1, r2 = parse_rth_value(orig_item.get('Thermal_Resistance_Rth', '65 °C/W')), parse_rth_value(sub_item.get('Thermal_Resistance_Rth', '65 °C/W'))
@@ -428,10 +425,18 @@ st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 15
 # 7. STANDALONE SINGLE MPN LOOKUP & COMPARISON
 # ==========================================
 st.markdown("### ⚡ Instant Single Component Inspector")
-quick_mpn = st.text_input("Query Manufacturer Part Number (MPN) for immediate AI parametric, thermal, and compliance validation:", placeholder="e.g. LM7805CT, NE555P, ATmega328P-PU, or IRF540N")
 
-if quick_mpn:
-    q_clean = quick_mpn.strip().upper()
+# Native Streamlit Dropdown with Automatic Typeahead Search
+available_mpns = catalog_df["MPN"].tolist()
+selected_search_mpn = st.selectbox(
+    "🔍 Search or Select Component Part Number (MPN) for AI Parametric & Compliance Validation:",
+    options=available_mpns,
+    index=7,  # Defaults to LM7805CT
+    help="Type letters (e.g. 'LM' or 'IRF') to instantly filter options."
+)
+
+if selected_search_mpn:
+    q_clean = selected_search_mpn.strip().upper()
     match = catalog_df[catalog_df["MPN"] == q_clean]
     
     if not match.empty:
