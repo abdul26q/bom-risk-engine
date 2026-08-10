@@ -216,7 +216,7 @@ def style_lifecycle(val):
 
 
 # ==========================================
-# 4. CONTROL PANEL & EXECUTION TRIGGER
+# 4. CONTROL PANEL & SIDEBAR
 # ==========================================
 st.sidebar.title("🛠️ BOM Control Panel")
 st.sidebar.caption("⚡ Nexar GraphQL API Connected (Backend Active)")
@@ -255,12 +255,12 @@ if uploaded_file is not None:
 
 if st.session_state.current_bom is not None:
     st.sidebar.markdown("---")
-    if st.sidebar.button("🚀 Run BOM Analysis", type="primary", use_container_width=True):
+    if st.sidebar.button("🚀 Run Full BOM Analysis", type="primary", use_container_width=True):
         st.session_state.ran_analysis = True
 
 
 # ==========================================
-# 5. HEADER & LANDING STATE
+# 5. HEADER BANNER
 # ==========================================
 st.markdown("""
 <div class="header-container">
@@ -269,13 +269,41 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+
+# ==========================================
+# 6. STANDALONE SINGLE MPN LOOKUP (ALWAYS ACCESSIBLE)
+# ==========================================
+st.subheader("⚡ Quick Single Component Search")
+quick_mpn = st.text_input("Query any Manufacturer Part Number (MPN) on the fly without uploading a BOM:", placeholder="e.g. NE555P, ATmega328P-PU, or LM7805CT")
+
+if quick_mpn:
+    q_clean = quick_mpn.strip().upper()
+    match = catalog_df[catalog_df["MPN"] == q_clean]
+    if not match.empty:
+        item = match.iloc[0]
+        st.success(f"**Part Found:** `{item['MPN']}` | Category: **{item['Category']}** | Status: **{item['Lifecycle_Status']}** | Recommended Alt: **{item['Substitute_MPN']}** (Match Score: **{item['Substitute_Match_Score']}%**)")
+    elif token:
+        live = fetch_live_part_data(q_clean, token)
+        if live:
+            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Standard Lead Time: **8 Weeks**")
+        else:
+            st.warning(f"No direct catalog match found for `{q_clean}`. Standard fallback substitute generated: `{q_clean}-ALT`.")
+    else:
+        st.info(f"Part `{q_clean}` queried — Status: **Active** | Lead Time: **8 Weeks**.")
+
+st.markdown("---")
+
+
+# ==========================================
+# 7. GUARD CHECK FOR FULL BOM ANALYSIS
+# ==========================================
 if not st.session_state.ran_analysis or st.session_state.current_bom is None:
-    st.info("👋 Welcome! Upload a BOM CSV file or click 'Load Sample Demo BOM' in the sidebar, then click '🚀 Run BOM Analysis' to begin execution.")
+    st.info("👋 To perform a complete **BOM Health Analysis**, upload a BOM CSV file or click 'Load Sample Demo BOM' in the sidebar, then click '🚀 Run Full BOM Analysis'.")
     st.stop()
 
 
 # ==========================================
-# 6. PIPELINE PROCESSING (CACHED IN SESSION STATE)
+# 8. PIPELINE PROCESSING (CACHED IN SESSION STATE)
 # ==========================================
 if "processed_bom" not in st.session_state:
     raw_bom = st.session_state.current_bom
@@ -330,7 +358,7 @@ processed_bom = st.session_state.processed_bom
 
 
 # ==========================================
-# 7. DASHBOARD DISPLAY, METRICS & BUSINESS IMPACT
+# 9. DASHBOARD DISPLAY & METRICS
 # ==========================================
 total_line_items = len(processed_bom)
 active_count = int((processed_bom["Lifecycle_Status"] == "Active").sum())
@@ -360,31 +388,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 
 # ==========================================
-# 8. INSTANT SINGLE MPN LOOKUP WIDGET
-# ==========================================
-st.subheader("⚡ Quick Single Component Search")
-quick_mpn = st.text_input("Query any Manufacturer Part Number (MPN) on the fly:", placeholder="e.g. NE555P, ATmega328P-PU, or LM7805CT")
-
-if quick_mpn:
-    q_clean = quick_mpn.strip().upper()
-    match = catalog_df[catalog_df["MPN"] == q_clean]
-    if not match.empty:
-        item = match.iloc[0]
-        st.success(f"**Part Found:** `{item['MPN']}` | Category: **{item['Category']}** | Status: **{item['Lifecycle_Status']}** | Recommended Alt: **{item['Substitute_MPN']}** (Match Score: **{item['Substitute_Match_Score']}%**)")
-    elif token:
-        live = fetch_live_part_data(q_clean, token)
-        if live:
-            st.success(f"**Live Nexar Result:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Standard Lead Time: **8 Weeks**")
-        else:
-            st.warning(f"No direct catalog match found for `{q_clean}`. Standard fallback substitute generated: `{q_clean}-ALT`.")
-    else:
-        st.info(f"Part `{q_clean}` queried — Status: **Active** | Lead Time: **8 Weeks**.")
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-
-# ==========================================
-# 9. DATA TABLE
+# 10. DATA TABLE
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
@@ -406,7 +410,7 @@ st.dataframe(
 
 
 # ==========================================
-# 10. FRAGMENTED INSPECTOR (NO PAGE REFRESH ON DROPDOWN CHANGE)
+# 11. FRAGMENTED INSPECTOR (NO PAGE REFRESH ON DROPDOWN CHANGE)
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
@@ -475,7 +479,7 @@ render_inspector_fragment(processed_bom)
 
 
 # ==========================================
-# 11. EXPORT REPORT
+# 12. EXPORT REPORT
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
 st.subheader("📥 Export Enriched BOM Data")
