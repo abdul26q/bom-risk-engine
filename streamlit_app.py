@@ -5,6 +5,7 @@ import requests
 import io
 import re
 import os
+import base64
 from sklearn.metrics.pairwise import cosine_similarity
 
 # ==========================================
@@ -12,85 +13,97 @@ from sklearn.metrics.pairwise import cosine_similarity
 # ==========================================
 st.set_page_config(
     page_title="TraceGuard Engine | Code Catalysts",
+    page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Custom high-contrast enterprise CSS styling
+# Custom high-contrast dark enterprise styling
 st.markdown("""
 <style>
-    .main { background-color: #f8fafc; }
-    h1, h2, h3 { font-family: 'Inter', -apple-system, sans-serif; font-weight: 700; }
+    /* Global Container Adjustments */
+    .main .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
     
+    /* Header Banner Styling */
     .header-container {
         background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        padding: 28px 36px;
+        padding: 24px 32px;
         border-radius: 12px;
-        color: white;
+        color: #ffffff;
         margin-bottom: 24px;
-        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
-        border-left: 6px solid #2563eb;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        border: 1px solid #334155;
+        border-left: 6px solid #3b82f6;
     }
-    .header-title { font-size: 32px; font-weight: 800; margin: 0; color: #ffffff; letter-spacing: -0.5px; }
-    .header-team { font-size: 13px; font-weight: 700; color: #60a5fa; text-transform: uppercase; letter-spacing: 1.5px; margin-top: 4px; margin-bottom: 8px; }
-    .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 4px; font-weight: 400; }
+    .header-title { font-size: 34px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; margin: 0; line-height: 1.2; }
+    .header-team { font-size: 12px; font-weight: 800; color: #38bdf8; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 4px; }
+    .header-subtitle { font-size: 14px; color: #94a3b8; margin-top: 8px; font-weight: 400; line-height: 1.4; }
 
+    /* Metric Cards */
     .metric-card {
-        background-color: #ffffff;
+        background: linear-gradient(145deg, #1e293b 0%, #0f172a 100%);
         border-radius: 10px;
         padding: 18px 20px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
+        border: 1px solid #334155;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
     }
-    .metric-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .metric-label { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
-    .metric-value { font-size: 28px; font-weight: 800; color: #0f172a; margin-top: 4px; }
+    .metric-label { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .metric-value { font-size: 28px; font-weight: 800; color: #f8fafc; margin-top: 4px; }
     
+    /* Impact Box */
     .impact-box {
-        background-color: #eff6ff;
-        border: 1px solid #bfdbfe;
+        background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+        border: 1px solid #4338ca;
+        border-left: 5px solid #6366f1;
         border-radius: 10px;
         padding: 18px 24px;
         margin-top: 20px;
-        color: #1e3a8a;
+        color: #e0e7ff;
     }
 
+    /* Inspection Spec Cards */
     .spec-card-orig {
-        background-color: #fef2f2;
-        border: 1px solid #fecaca;
+        background-color: #1a0f12;
+        border: 1px solid #7f1d1d;
+        border-left: 5px solid #ef4444;
         border-radius: 10px;
         padding: 20px;
     }
     .spec-card-sub {
-        background-color: #f0fdf4;
-        border: 1px solid #bbf7d0;
+        background-color: #061c14;
+        border: 1px solid #14532d;
+        border-left: 5px solid #22c55e;
         border-radius: 10px;
         padding: 20px;
     }
     .spec-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
     .spec-tag {
         display: inline-block;
-        background-color: #ffffff;
-        color: #0f172a !important;
+        background-color: #0f172a;
+        color: #f1f5f9 !important;
         border-radius: 6px;
         padding: 6px 12px;
         margin: 4px 4px 4px 0;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
-        border: 1px solid #cbd5e1;
+        border: 1px solid #334155;
     }
     
+    /* Verdict Box */
     .verdict-box {
-        background-color: #ffffff;
-        border: 1px solid #cbd5e1;
-        border-left: 5px solid #2563eb;
-        padding: 14px 18px;
-        margin-top: 14px;
-        border-radius: 6px;
+        background-color: #0f172a;
+        border: 1px solid #334155;
+        border-left: 5px solid #3b82f6;
+        padding: 16px 20px;
+        margin-top: 16px;
+        border-radius: 8px;
         font-size: 13px;
-        color: #0f172a;
+        color: #e2e8f0;
+        line-height: 1.5;
     }
+
+    /* Table & UI Polish */
+    .stDataFrame { border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -142,7 +155,7 @@ def generate_ai_engineering_verdict(orig_mpn, sub_mpn, orig_item):
     use_case = orig_item.get('Use_Case', 'Power & Signal Conditioning')
     
     return f"""
-    <b>AI Parametric & Compliance Verdict:</b> Machine learning vector analysis confirms <code>{sub_mpn}</code> provides 100% electrical parameter alignment with <code>{orig_mpn}</code> across voltage rating ({v_spec}V), current capacity ({i_spec}A), and thermal dissipation profile ({rth_spec}) for <i>"{use_case}"</i> applications. <b>Zero PCB layout trace modification required. Certified 100% RoHS 3 Lead-Free and REACH SVHC compliant.</b>
+    <b>🤖 AI Parametric & Compliance Verdict:</b> Machine learning vector analysis confirms <code>{sub_mpn}</code> provides 100% electrical parameter alignment with <code>{orig_mpn}</code> across voltage rating ({v_spec}V), current capacity ({i_spec}A), and thermal dissipation profile ({rth_spec}) for <i>"{use_case}"</i> applications. <b>Zero PCB layout trace modification required. Certified 100% RoHS 3 Lead-Free and REACH SVHC compliant.</b>
     """
 
 
@@ -319,11 +332,11 @@ def generate_sample_bom():
 
 def style_lifecycle(val):
     if val == "Active":
-        return "color: #166534; font-weight: 700; background-color: #dcfce7; padding: 4px 8px; border-radius: 6px;"
+        return "color: #4ade80; font-weight: 700; background-color: rgba(34, 197, 94, 0.15); padding: 4px 8px; border-radius: 6px;"
     elif val == "NRND":
-        return "color: #854d0e; font-weight: 700; background-color: #fef9c3; padding: 4px 8px; border-radius: 6px;"
+        return "color: #facc15; font-weight: 700; background-color: rgba(234, 179, 8, 0.15); padding: 4px 8px; border-radius: 6px;"
     elif val in ["EOL", "Obsolete"]:
-        return "color: #991b1b; font-weight: 700; background-color: #fee2e2; padding: 4px 8px; border-radius: 6px;"
+        return "color: #f87171; font-weight: 700; background-color: rgba(239, 68, 68, 0.15); padding: 4px 8px; border-radius: 6px;"
     return ""
 
 
@@ -391,28 +404,34 @@ if st.session_state.current_bom is not None:
 
 
 # ==========================================
-# 6. HEADER BANNER WITH EMBEDDED LOGO
+# 6. EMBEDDED LOGO HEADER BANNER
 # ==========================================
-st.markdown("""
+# Convert logo to base64 if present so it renders smoothly inside HTML container
+logo_html = ""
+if os.path.exists("logo.png"):
+    with open("logo.png", "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode()
+    logo_html = f'<img src="data:image/png;base64,{encoded_string}" style="max-height: 52px; filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5)); margin-bottom: 6px;">'
+else:
+    logo_html = '<div class="header-title">⚡ TraceGuard Engine</div>'
+
+st.markdown(f"""
 <div class="header-container">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
         <div>
             <div class="header-team">By Code Catalysts</div>
+            {logo_html}
             <div class="header-subtitle">Intelligent Hardware Risk Engine: Pin-to-Pin Substitute Matching, Thermal Stability & Export Compliance</div>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# Render logo if available in repository
-if os.path.exists("logo.png"):
-    st.image("logo.png", width=380)
-
 
 # ==========================================
 # 7. STANDALONE SINGLE MPN LOOKUP & COMPARISON
 # ==========================================
-st.subheader("Instant Single Component Inspector")
+st.subheader("⚡ Instant Single Component Inspector")
 quick_mpn = st.text_input("Query Manufacturer Part Number (MPN) for immediate AI parametric, thermal, and compliance validation:", placeholder="e.g. LM7805CT, NE555P, ATmega328P-PU, or IRF540N")
 
 if quick_mpn:
@@ -436,11 +455,11 @@ if quick_mpn:
         with col_orig:
             st.markdown(f"""
             <div class="spec-card-orig">
-                <div class="spec-title" style="color: #991b1b;">Queried Component: {item['MPN']}</div>
+                <div class="spec-title" style="color: #f87171;">🔴 Queried Component: {item['MPN']}</div>
                 <div class="spec-tag">Category: <b>{item['Category']}</b></div>
                 <div class="spec-tag">Status: <b>{item['Lifecycle_Status']}</b></div>
                 <div class="spec-tag">Package: <b>{item['Package']}</b></div>
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #7f1d1d;">
                 <div class="spec-tag">Max Voltage: <b>{item['Max_Voltage_V']} V</b></div>
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']}</b></div>
@@ -448,7 +467,7 @@ if quick_mpn:
                 <div class="spec-tag">RoHS Status: <b>{item['RoHS_Status']}</b></div>
                 <div class="spec-tag">REACH SVHC: <b>{item['REACH_Status']}</b></div>
                 <div class="spec-tag">Primary Application: <b>{item['Use_Case']}</b></div>
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #7f1d1d;">
                 <div class="spec-tag">Lead Time: <b>{item['Lead_Time_Weeks']} Weeks</b></div>
                 <div class="spec-tag">Unit Price: <b>{curr_symbol}{orig_price_conv:.2f}</b></div>
             </div>
@@ -457,11 +476,11 @@ if quick_mpn:
         with col_sub:
             st.markdown(f"""
             <div class="spec-card-sub">
-                <div class="spec-title" style="color: #166534;">AI Verified Drop-In Replacement: {item['Substitute_MPN']}</div>
+                <div class="spec-title" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {item['Substitute_MPN']}</div>
                 <div class="spec-tag">AI Vector Similarity Score: <b>{match_score}%</b></div>
                 <div class="spec-tag">Lifecycle Status: <b>Active</b></div>
                 <div class="spec-tag">Package: <b>{item['Substitute_Package']}</b></div>
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #14532d;">
                 <div class="spec-tag">Max Voltage: <b>{item['Max_Voltage_V']} V (Fully Compatible)</b></div>
                 <div class="spec-tag">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
                 <div class="spec-tag">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
@@ -469,7 +488,7 @@ if quick_mpn:
                 <div class="spec-tag">RoHS Status: <b>Compliant (Pb-Free)</b></div>
                 <div class="spec-tag">REACH SVHC: <b>Pass (<0.1% w/w)</b></div>
                 <div class="spec-tag">Primary Application: <b>{item['Use_Case']}</b></div>
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #14532d;">
                 <div class="spec-tag">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
                 <div class="spec-tag">Unit Price: <b>{curr_symbol}{sub_price_conv:.2f}</b></div>
             </div>
@@ -581,17 +600,17 @@ c1, c2, c3, c4 = st.columns(4)
 with c1:
     st.markdown(f'<div class="metric-card"><div class="metric-label">Total Assembly Line Items</div><div class="metric-value">{total_line_items}</div></div>', unsafe_allow_html=True)
 with c2:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">Active Components</div><div class="metric-value" style="color: #16a34a;">{active_count}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">Active Components</div><div class="metric-value" style="color: #4ade80;">{active_count}</div></div>', unsafe_allow_html=True)
 with c3:
-    st.markdown(f'<div class="metric-card"><div class="metric-label">High Risk / EOL Items</div><div class="metric-value" style="color: #dc2626;">{high_risk_count}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="metric-card"><div class="metric-label">High Risk / EOL Items</div><div class="metric-value" style="color: #f87171;">{high_risk_count}</div></div>', unsafe_allow_html=True)
 with c4:
-    score_color = "#16a34a" if health_score > 80 else ("#ca8a04" if health_score > 50 else "#dc2626")
+    score_color = "#4ade80" if health_score > 80 else ("#facc15" if health_score > 50 else "#f87171")
     st.markdown(f'<div class="metric-card"><div class="metric-label">BOM Health Index</div><div class="metric-value" style="color: {score_color};">{health_score}%</div></div>', unsafe_allow_html=True)
 
 est_savings_converted = high_risk_count * 7500 * curr_rate
 st.markdown(f"""
 <div class="impact-box">
-    <b>Enterprise ROI & Operations Assessment:</b> Automated drop-in substitute mapping for <b>{high_risk_count} flagged component(s)</b> prevents an estimated <b>{curr_symbol}{est_savings_converted:,.2f} in PCB re-layout costs</b> and eliminates <b>8 to 12 weeks of factory production downtime</b>.
+    <b>💼 Enterprise ROI & Operations Assessment:</b> Automated drop-in substitute mapping for <b>{high_risk_count} flagged component(s)</b> prevents an estimated <b>{curr_symbol}{est_savings_converted:,.2f} in PCB re-layout costs</b> and eliminates <b>8 to 12 weeks of factory production downtime</b>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -601,7 +620,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 # 11. STREAMLINED BOM ANALYSIS TABLE
 # ==========================================
-st.subheader("Assembly Analysis Summary")
+st.subheader("📋 Assembly Analysis Summary")
 
 clean_summary_cols = [
     col for col in ["Reference_Designator", "MPN", "Quantity", "Category", "Lifecycle_Status", "Substitute_MPN", "Substitute_Match_Score", price_col_name]
@@ -634,7 +653,7 @@ st.dataframe(
 # 12. FRAGMENTED INSPECTOR
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("AI Parametric & Environmental Substitute Inspector")
+st.subheader("🔍 AI Parametric & Environmental Substitute Inspector")
 
 @st.fragment
 def render_inspector_fragment(df, c_symbol, c_rate):
@@ -666,40 +685,40 @@ def render_inspector_fragment(df, c_symbol, c_rate):
             with col_left:
                 st.markdown(f"""
                 <div class="spec-card-orig">
-                    <div class="spec-title" style="color: #991b1b;">Original Component: {orig['MPN']}</div>
-                    <div class="spec-tag">Status: <b style="color: #0f172a;">{orig['Lifecycle_Status']}</b></div>
-                    <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Package', 'N/A')}</b></div>
-                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
-                    <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
-                    <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
-                    <div class="spec-tag">Operating Temp (Tj): <b style="color: #0f172a;">{orig.get('Operating_Temp', 'N/A')}</b></div>
-                    <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #0f172a;">{orig.get('Thermal_Resistance_Rth', 'N/A')}</b></div>
-                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">{orig.get('RoHS_Status', 'N/A')}</b></div>
-                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">{orig.get('REACH_Status', 'N/A')}</b></div>
-                    <div class="spec-tag">Primary Application: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
-                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #fecaca;">
-                    <div class="spec-tag">Lead Time: <b style="color: #0f172a;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
-                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">{c_symbol}{orig_price_c:.2f}</b></div>
+                    <div class="spec-title" style="color: #f87171;">🔴 Original Component: {orig['MPN']}</div>
+                    <div class="spec-tag">Status: <b style="color: #f1f5f9;">{orig['Lifecycle_Status']}</b></div>
+                    <div class="spec-tag">Package: <b style="color: #f1f5f9;">{orig.get('Package', 'N/A')}</b></div>
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #7f1d1d;">
+                    <div class="spec-tag">Max Voltage: <b style="color: #f1f5f9;">{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
+                    <div class="spec-tag">Max Current: <b style="color: #f1f5f9;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
+                    <div class="spec-tag">Operating Temp (Tj): <b style="color: #f1f5f9;">{orig.get('Operating_Temp', 'N/A')}</b></div>
+                    <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #f1f5f9;">{orig.get('Thermal_Resistance_Rth', 'N/A')}</b></div>
+                    <div class="spec-tag">RoHS Status: <b style="color: #f1f5f9;">{orig.get('RoHS_Status', 'N/A')}</b></div>
+                    <div class="spec-tag">REACH SVHC: <b style="color: #f1f5f9;">{orig.get('REACH_Status', 'N/A')}</b></div>
+                    <div class="spec-tag">Primary Application: <b style="color: #f1f5f9;">{orig.get('Use_Case', 'N/A')}</b></div>
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #7f1d1d;">
+                    <div class="spec-tag">Lead Time: <b style="color: #f1f5f9;">{orig.get('Lead_Time_Weeks', 'N/A')} Weeks</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #f1f5f9;">{c_symbol}{orig_price_c:.2f}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
 
             with col_right:
                 st.markdown(f"""
                 <div class="spec-card-sub">
-                    <div class="spec-title" style="color: #166534;">AI Verified Drop-In Replacement: {orig.get('Substitute_MPN', 'N/A')}</div>
-                    <div class="spec-tag">AI Vector Similarity Score: <b style="color: #0f172a;">{match_score}%</b></div>
-                    <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Substitute_Package', 'Standard')}</b></div>
-                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
-                    <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V (Matches Spec)</b></div>
-                    <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
-                    <div class="spec-tag">Operating Temp (Tj): <b style="color: #0f172a;">{orig.get('Operating_Temp', 'N/A')} (Thermal Match)</b></div>
-                    <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #0f172a;">{orig.get('Thermal_Resistance_Rth', 'N/A')} (Equivalent)</b></div>
-                    <div class="spec-tag">RoHS Status: <b style="color: #0f172a;">Compliant (Pb-Free)</b></div>
-                    <div class="spec-tag">REACH SVHC: <b style="color: #0f172a;">Pass (<0.1% w/w)</b></div>
-                    <div class="spec-tag">Primary Application: <b style="color: #0f172a;">{orig.get('Use_Case', 'N/A')}</b></div>
-                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #bbf7d0;">
-                    <div class="spec-tag">Estimated Lead Time: <b style="color: #0f172a;">{sub_lead} Weeks</b></div>
-                    <div class="spec-tag">Unit Price: <b style="color: #0f172a;">{c_symbol}{sub_price_c:.2f}</b></div>
+                    <div class="spec-title" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {orig.get('Substitute_MPN', 'N/A')}</div>
+                    <div class="spec-tag">AI Vector Similarity Score: <b style="color: #f1f5f9;">{match_score}%</b></div>
+                    <div class="spec-tag">Package: <b style="color: #f1f5f9;">{orig.get('Substitute_Package', 'Standard')}</b></div>
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #14532d;">
+                    <div class="spec-tag">Max Voltage: <b style="color: #f1f5f9;">{orig.get('Max_Voltage_V', 'N/A')} V (Matches Spec)</b></div>
+                    <div class="spec-tag">Max Current: <b style="color: #f1f5f9;">{orig.get('Max_Current_A', 'N/A')} A (Matches Spec)</b></div>
+                    <div class="spec-tag">Operating Temp (Tj): <b style="color: #f1f5f9;">{orig.get('Operating_Temp', 'N/A')} (Thermal Match)</b></div>
+                    <div class="spec-tag">Thermal Resistance (θJA): <b style="color: #f1f5f9;">{orig.get('Thermal_Resistance_Rth', 'N/A')} (Equivalent)</b></div>
+                    <div class="spec-tag">RoHS Status: <b style="color: #f1f5f9;">Compliant (Pb-Free)</b></div>
+                    <div class="spec-tag">REACH SVHC: <b style="color: #f1f5f9;">Pass (<0.1% w/w)</b></div>
+                    <div class="spec-tag">Primary Application: <b style="color: #f1f5f9;">{orig.get('Use_Case', 'N/A')}</b></div>
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #14532d;">
+                    <div class="spec-tag">Estimated Lead Time: <b style="color: #f1f5f9;">{sub_lead} Weeks</b></div>
+                    <div class="spec-tag">Unit Price: <b style="color: #f1f5f9;">{c_symbol}{sub_price_c:.2f}</b></div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -716,7 +735,7 @@ render_inspector_fragment(processed_bom, curr_symbol, curr_rate)
 # 13. ENRICHED EXPORT REPORT
 # ==========================================
 st.markdown("<br>", unsafe_allow_html=True)
-st.subheader("Export Verified Enriched BOM")
+st.subheader("📥 Export Verified Enriched BOM")
 
 export_df = processed_bom.copy()
 if "Price_USD" in export_df.columns:
