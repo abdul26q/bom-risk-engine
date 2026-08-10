@@ -179,9 +179,11 @@ def get_backend_nexar_token():
         return None
     return None
 
-def fetch_live_part_data(mpn, token):
-    if not token or len(mpn) < 3:
-        return None
+# Live Nexar Search API - Supports Prefix & Typeahead Query Matching
+@st.cache_data(ttl=600)
+def search_nexar_parts_by_prefix(query_prefix, token, limit=10):
+    if not token or not query_prefix or len(query_prefix.strip()) < 1:
+        return []
         
     url = "https://api.nexar.com/graphql"
     headers = {
@@ -189,9 +191,12 @@ def fetch_live_part_data(mpn, token):
         "Content-Type": "application/json"
     }
 
+    # Appends wildcard (*) for true prefix autocomplete matching
+    q_term = f"{query_prefix.strip()}*"
+
     query = """
-    query SearchComponent($mpn: String!) {
-      supSearch(q: $mpn, limit: 1) {
+    query SearchComponents($q: String!, $limit: Int!) {
+      supSearch(q: $q, limit: $limit) {
         results {
           item {
             mpn
@@ -204,34 +209,37 @@ def fetch_live_part_data(mpn, token):
     """
     
     try:
-        response = requests.post(url, json={'query': query, 'variables': {'mpn': mpn}}, headers=headers, timeout=5)
+        response = requests.post(url, json={'query': query, 'variables': {'q': q_term, 'limit': limit}}, headers=headers, timeout=5)
         if response.status_code == 200:
             data = response.json()
             results = data.get('data', {}).get('supSearch', {}).get('results', [])
-            if results:
-                item = results[0].get('item', {})
-                return {
-                    "MPN": item.get('mpn', mpn),
-                    "Category": item.get('category', {}).get('name', 'Electronic Component'),
-                    "Lifecycle_Status": "Active",
-                    "Package": "Standard",
-                    "Max_Voltage_V": 12.0,
-                    "Max_Current_A": 1.0,
-                    "Operating_Temp": "-40°C to +85°C",
-                    "Thermal_Resistance_Rth": "65 °C/W",
-                    "Efficiency_Rating": "85%",
-                    "Use_Case": "General Electronics & Power Conditioning",
-                    "RoHS_Status": "Compliant (Pb-Free)",
-                    "REACH_Status": "Pass (<0.1% w/w)",
-                    "Lead_Time_Weeks": 8,
-                    "Substitute_MPN": f"{mpn}-ALT",
-                    "Substitute_Package": "Standard",
-                    "Substitute_Match_Score": 95,
-                    "Price_USD": 0.85
-                }
+            matched_items = []
+            for r in results:
+                item = r.get('item', {})
+                if item.get('mpn'):
+                    matched_items.append({
+                        "MPN": item.get('mpn'),
+                        "Category": item.get('category', {}).get('name', 'Electronic Component'),
+                        "Lifecycle_Status": "Active",
+                        "Package": "Standard",
+                        "Max_Voltage_V": 12.0,
+                        "Max_Current_A": 1.0,
+                        "Operating_Temp": "-40°C to +85°C",
+                        "Thermal_Resistance_Rth": "65 °C/W",
+                        "Efficiency_Rating": "85%",
+                        "Use_Case": item.get('shortDescription', 'General Power & Signal Conditioning'),
+                        "RoHS_Status": "Compliant (Pb-Free)",
+                        "REACH_Status": "Pass (<0.1% w/w)",
+                        "Lead_Time_Weeks": 8,
+                        "Substitute_MPN": f"{item.get('mpn')}-ALT",
+                        "Substitute_Package": "Standard",
+                        "Substitute_Match_Score": 95,
+                        "Price_USD": 0.85
+                    })
+            return matched_items
     except Exception:
-        return None
-    return None
+        return []
+    return []
 
 
 # ==========================================
@@ -301,7 +309,7 @@ def load_mock_component_catalog():
             "STP40NF06L", "TL082CP", "IFX1117MEV33", "ESP32-C3", "NCV33063AVDR2G"
         ],
         "Substitute_Package": [
-            "TO-220", "DIP-8", "SOT-223", "LQFP-48", "0805",
+            "TO-220", "DIP-8", "SOT-23", "LQFP-48", "0805",
             "SOT-23", "DIP-8", "TO-220AB", "DIP-28", "0603",
             "TO-220", "DIP-8", "TO-220", "QFN-32", "SOIC-8"
         ],
@@ -415,35 +423,47 @@ st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 15
 
 
 # ==========================================
-# 7. STANDALONE SINGLE MPN LOOKUP & COMPARISON
+# 7. UNRESTRICTED DYNAMIC API TYPEAHEAD INSPECTOR
 # ==========================================
 st.markdown("### ⚡ Instant Single Component Inspector")
 
-# Amazon-Style Auto-Suggest Selectbox + Custom Part Entry Option
-catalog_mpns = catalog_df["MPN"].tolist()
-search_options = catalog_mpns + ["🔎 Search Custom Part Number via Nexar API..."]
+search_prefix = st.text_input(
+    "🔍 Type starting letters or MPN numbers (e.g. 'N', 'NE', 'LM', 'IRF', 'STM32') to fetch live API matches:",
+    value="NE",
+    placeholder="Type any prefix to trigger live Nexar API lookup..."
+).strip().upper()
 
-selected_option = st.selectbox(
-    "🔍 Auto-Suggest Component Search (Type letters to filter):",
-    options=search_options,
-    index=7,  # Default to LM7805CT
-    help="Type starting letters (e.g. 'LM', 'NE', 'IRF') to auto-suggest catalog parts, or select 'Search Custom' to type any external MPN."
-)
+# Fetch live matches from Nexar API based on prefix
+live_api_results = search_nexar_parts_by_prefix(search_prefix, token, limit=10) if token else []
 
-custom_mpn_query = ""
-if selected_option == "🔎 Search Custom Part Number via Nexar API...":
-    custom_mpn_query = st.text_input("Enter Full Custom Manufacturer Part Number (MPN):", placeholder="e.g. STM32F401RBT6, TPS5430DDA").strip().upper()
-    active_mpn = custom_mpn_query
-else:
-    active_mpn = selected_option.strip().upper()
+# Local catalog matches for prefix
+local_catalog_mpns = [m for m in catalog_df["MPN"].tolist() if m.startswith(search_prefix)]
+api_mpns = [item["MPN"] for item in live_api_results]
 
-if active_mpn:
-    match = catalog_df[catalog_df["MPN"] == active_mpn]
-    
-    # 1. Local Catalog Match
-    if not match.empty:
-        item = match.iloc[0].to_dict()
-        sub_match = catalog_df[catalog_df["MPN"] == item["Substitute_MPN"]]
+# Combine unique options dynamically
+combined_options = list(dict.fromkeys(local_catalog_mpns + api_mpns))
+
+if combined_options:
+    selected_mpn = st.selectbox(
+        f"🎯 Select from Live API & Catalog Matches starting with '{search_prefix}':",
+        options=combined_options,
+        index=0
+    )
+
+    item = None
+    # Check local catalog first
+    local_match = catalog_df[catalog_df["MPN"] == selected_mpn]
+    if not local_match.empty:
+        item = local_match.iloc[0].to_dict()
+    else:
+        # Pull from live API matches
+        for live_item in live_api_results:
+            if live_item["MPN"] == selected_mpn:
+                item = live_item
+                break
+
+    if item:
+        sub_match = catalog_df[catalog_df["MPN"] == item.get("Substitute_MPN")]
         sub_item = sub_match.iloc[0].to_dict() if not sub_match.empty else item
         
         match_score = compute_ai_vector_similarity(item, sub_item)
@@ -478,10 +498,10 @@ if active_mpn:
         with col_sub:
             st.markdown(f"""
             <div class="card-sub">
-                <div class="card-heading" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {item['Substitute_MPN']}</div>
+                <div class="card-heading" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {item.get('Substitute_MPN', f"{selected_mpn}-ALT")}</div>
                 <div class="badge-item">AI Vector Similarity Score: <b>{match_score}%</b></div>
                 <div class="badge-item">Lifecycle Status: <b>Active</b></div>
-                <div class="badge-item">Package: <b>{item['Substitute_Package']}</b></div>
+                <div class="badge-item">Package: <b>{item.get('Substitute_Package', 'Standard')}</b></div>
                 <hr style="margin: 10px 0; border: 0; border-top: 1px solid #166534;">
                 <div class="badge-item">Max Voltage: <b>{item['Max_Voltage_V']} V (Fully Compatible)</b></div>
                 <div class="badge-item">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
@@ -496,21 +516,11 @@ if active_mpn:
             </div>
             """, unsafe_allow_html=True)
             
-        verdict_text = generate_ai_engineering_verdict(item['MPN'], item['Substitute_MPN'], item)
+        verdict_text = generate_ai_engineering_verdict(item['MPN'], item.get('Substitute_MPN', f"{selected_mpn}-ALT"), item)
         st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
 
-    # 2. Live Nexar API Query for Custom Input (Min 3 Chars required)
-    elif token and len(active_mpn) >= 3:
-        live = fetch_live_part_data(active_mpn, token)
-        if live:
-            live_p = float(live['Price_USD']) * curr_rate
-            st.success(f"🌐 **Nexar Live API Match Found:** `{live['MPN']}` | Category: **{live['Category']}** | Status: **Active** | Unit Price: **{curr_symbol}{live_p:.2f}** | RoHS: **{live['RoHS_Status']}**")
-            
-            live_sub_mpn = f"{active_mpn}-ALT"
-            verdict_text = generate_ai_engineering_verdict(active_mpn, live_sub_mpn, live)
-            st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
-        else:
-            st.info(f"No exact match found on Nexar API for `{active_mpn}`. Please verify part number spelling.")
+else:
+    st.info(f"Typing '{search_prefix}'... No components found starting with that prefix across Nexar API or local catalog.")
 
 st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 25px; margin-bottom: 25px;'>", unsafe_allow_html=True)
 
@@ -540,9 +550,9 @@ if "processed_bom" not in st.session_state:
         if not match.empty:
             merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
         elif token:
-            live_data = fetch_live_part_data(mpn, token)
-            if live_data:
-                merged_item = {**row.to_dict(), **live_data}
+            live_data_list = search_nexar_parts_by_prefix(mpn, token, limit=1)
+            if live_data_list:
+                merged_item = {**row.to_dict(), **live_data_list[0]}
             else:
                 merged_item = {
                     **row.to_dict(),
