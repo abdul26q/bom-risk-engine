@@ -234,15 +234,18 @@ if uploaded_file is not None:
     raw_df = pd.read_csv(uploaded_file)
     col_map = {}
     for col in raw_df.columns:
-        clean_col = str(col).strip().upper()
-        if clean_col in ["MPN", "PART_NUMBER", "PART NUMBER", "PARTNUMBER", "ITEM_MPN"]:
+        clean_col = str(col).strip().upper().replace(" ", "_").replace("-", "_")
+        if clean_col in ["MPN", "PART_NUMBER", "PARTNUMBER", "ITEM_MPN", "MANUFACTURER_PART_NUMBER", "PART_NO", "PARTNO"]:
             col_map[col] = "MPN"
     raw_df.rename(columns=col_map, inplace=True)
     
-    st.session_state.current_bom = raw_df
-    st.session_state.ran_analysis = False
-    if "processed_bom" in st.session_state:
-        del st.session_state["processed_bom"]
+    if "MPN" not in raw_df.columns:
+        st.sidebar.error("⚠️ Couldn't find an 'MPN' or 'Part Number' column. Please check your CSV headers.")
+    else:
+        st.session_state.current_bom = raw_df
+        st.session_state.ran_analysis = False
+        if "processed_bom" in st.session_state:
+            del st.session_state["processed_bom"]
 
 if st.session_state.current_bom is not None:
     st.sidebar.markdown("---")
@@ -274,10 +277,10 @@ if "processed_bom" not in st.session_state:
 
     for _, row in raw_bom.iterrows():
         mpn = str(row.get("MPN", "")).strip()
-        if not mpn or mpn.lower() == "nan":
+        if not mpn or mpn.lower() in ["nan", "none", "null", ""]:
             continue
         
-        match = catalog_df[catalog_df["MPN"] == mpn]
+        match = catalog_df[catalog_df["MPN"].str.upper() == mpn.upper()]
         
         if not match.empty:
             merged_item = {**row.to_dict(), **match.iloc[0].to_dict()}
@@ -315,7 +318,14 @@ if "processed_bom" not in st.session_state:
             }
         processed_rows.append(merged_item)
 
-    st.session_state.processed_bom = pd.DataFrame(processed_rows)
+    if processed_rows:
+        st.session_state.processed_bom = pd.DataFrame(processed_rows)
+    else:
+        st.session_state.processed_bom = pd.DataFrame(columns=[
+            "MPN", "Category", "Lifecycle_Status", "Package", 
+            "Max_Voltage_V", "Max_Current_A", "Lead_Time_Weeks", 
+            "Substitute_MPN", "Substitute_Package", "Substitute_Match_Score", "Price_USD"
+        ])
 
 processed_bom = st.session_state.processed_bom
 
@@ -323,9 +333,13 @@ processed_bom = st.session_state.processed_bom
 # ==========================================
 # 7. DASHBOARD DISPLAY & METRICS
 # ==========================================
+if processed_bom.empty:
+    st.warning("⚠️ No valid parts were found or processed from the uploaded CSV. Please ensure your file contains valid Part Numbers.")
+    st.stop()
+
 total_line_items = len(processed_bom)
-active_count = int((processed_bom["Lifecycle_Status"] == "Active").sum())
-high_risk_count = int(processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete"]).sum())
+active_count = int((processed_bom["Lifecycle_Status"] == "Active").sum()) if "Lifecycle_Status" in processed_bom.columns else 0
+high_risk_count = int(processed_bom["Lifecycle_Status"].isin(["EOL", "Obsolete"]).sum()) if "Lifecycle_Status" in processed_bom.columns else 0
 health_score = int(max(0, 100 - ((high_risk_count / total_line_items) * 100))) if total_line_items > 0 else 100
 
 c1, c2, c3, c4 = st.columns(4)
@@ -347,18 +361,25 @@ st.markdown("<br>", unsafe_allow_html=True)
 # ==========================================
 st.subheader("📋 BOM Analysis Table")
 
-styled_df = processed_bom.style.map(style_lifecycle, subset=["Lifecycle_Status"])
+column_config = {}
+if "Price_USD" in processed_bom.columns:
+    column_config["Price_USD"] = st.column_config.NumberColumn("Unit Price ($)", format="$%.2f")
+if "Substitute_Match_Score" in processed_bom.columns:
+    column_config["Substitute_Match_Score"] = st.column_config.ProgressColumn(
+        "Substitute Match",
+        format="%d%%",
+        min_value=0,
+        max_value=100
+    )
+
+if "Lifecycle_Status" in processed_bom.columns:
+    styled_df = processed_bom.style.map(style_lifecycle, subset=["Lifecycle_Status"])
+else:
+    styled_df = processed_bom
+
 st.dataframe(
     styled_df,
-    column_config={
-        "Price_USD": st.column_config.NumberColumn("Unit Price ($)", format="$%.2f"),
-        "Substitute_Match_Score": st.column_config.ProgressColumn(
-            "Substitute Match",
-            format="%d%%",
-            min_value=0,
-            max_value=100
-        )
-    },
+    column_config=column_config,
     use_container_width=True,
     hide_index=True
 )
@@ -372,6 +393,10 @@ st.subheader("🔍 High-Risk Component Inspector & Pin-Compatible Replacement")
 
 @st.fragment
 def render_inspector_fragment(df):
+    if "Lifecycle_Status" not in df.columns:
+        st.info("🎉 All components in the current BOM are active! No action required.")
+        return
+
     flagged_items = df[df["Lifecycle_Status"].isin(["EOL", "Obsolete", "NRND"])].drop_duplicates(subset=["MPN"])
 
     if len(flagged_items) > 0:
@@ -396,7 +421,7 @@ def render_inspector_fragment(df):
                 st.markdown(f"""
                 <div class="spec-card-orig">
                     <div class="spec-title" style="color: #991b1b;">🔴 Original: {orig['MPN']}</div>
-                    <div class="spec-tag">Status: <b style="color: #0f172a;">{orig['Lifecycle_Status']}</b></div>
+                    <div class="spec-tag">Status: <b style="color: #0f172a;">{orig.get('Lifecycle_Status', 'N/A')}</b></div>
                     <div class="spec-tag">Package: <b style="color: #0f172a;">{orig.get('Package', 'N/A')}</b></div>
                     <div class="spec-tag">Max Voltage: <b style="color: #0f172a;">{orig.get('Max_Voltage_V', 'N/A')} V</b></div>
                     <div class="spec-tag">Max Current: <b style="color: #0f172a;">{orig.get('Max_Current_A', 'N/A')} A</b></div>
