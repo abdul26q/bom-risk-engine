@@ -179,10 +179,9 @@ def get_backend_nexar_token():
         return None
     return None
 
-# Live Nexar Search API - Supports Prefix & Typeahead Query Matching
 @st.cache_data(ttl=600)
-def search_nexar_parts_by_prefix(query_prefix, token, limit=10):
-    if not token or not query_prefix or len(query_prefix.strip()) < 1:
+def search_nexar_parts_by_prefix(query_prefix, token, limit=15):
+    if not token or not query_prefix or len(query_prefix.strip()) < 2:
         return []
         
     url = "https://api.nexar.com/graphql"
@@ -191,8 +190,7 @@ def search_nexar_parts_by_prefix(query_prefix, token, limit=10):
         "Content-Type": "application/json"
     }
 
-    # Appends wildcard (*) for true prefix autocomplete matching
-    q_term = f"{query_prefix.strip()}*"
+    q_term = query_prefix.strip()
 
     query = """
     query SearchComponents($q: String!, $limit: Int!) {
@@ -309,7 +307,7 @@ def load_mock_component_catalog():
             "STP40NF06L", "TL082CP", "IFX1117MEV33", "ESP32-C3", "NCV33063AVDR2G"
         ],
         "Substitute_Package": [
-            "TO-220", "DIP-8", "SOT-23", "LQFP-48", "0805",
+            "TO-220", "DIP-8", "SOT-223", "LQFP-48", "0805",
             "SOT-23", "DIP-8", "TO-220AB", "DIP-28", "0603",
             "TO-220", "DIP-8", "TO-220", "QFN-32", "SOIC-8"
         ],
@@ -423,104 +421,101 @@ st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 15
 
 
 # ==========================================
-# 7. UNRESTRICTED DYNAMIC API TYPEAHEAD INSPECTOR
+# 7. UNRESTRICTED DYNAMIC API SEARCH INSPECTOR
 # ==========================================
 st.markdown("### ⚡ Instant Single Component Inspector")
 
 search_prefix = st.text_input(
-    "🔍 Type starting letters or MPN numbers (e.g. 'N', 'NE', 'LM', 'IRF', 'STM32') to fetch live API matches:",
+    "🔍 Type letters or MPN numbers (e.g., 'NE', 'NCP', 'LM', 'IRF', 'STM32') to fetch live matches:",
     value="NE",
-    placeholder="Type any prefix to trigger live Nexar API lookup..."
+    placeholder="Type at least 2 characters to trigger live Nexar API query..."
 ).strip().upper()
 
-# Fetch live matches from Nexar API based on prefix
-live_api_results = search_nexar_parts_by_prefix(search_prefix, token, limit=10) if token else []
+if len(search_prefix) >= 2:
+    live_api_results = search_nexar_parts_by_prefix(search_prefix, token, limit=15) if token else []
+    local_catalog_mpns = [m for m in catalog_df["MPN"].tolist() if search_prefix in m]
+    api_mpns = [item["MPN"] for item in live_api_results]
 
-# Local catalog matches for prefix
-local_catalog_mpns = [m for m in catalog_df["MPN"].tolist() if m.startswith(search_prefix)]
-api_mpns = [item["MPN"] for item in live_api_results]
+    combined_options = list(dict.fromkeys(local_catalog_mpns + api_mpns))
 
-# Combine unique options dynamically
-combined_options = list(dict.fromkeys(local_catalog_mpns + api_mpns))
+    if combined_options:
+        selected_mpn = st.selectbox(
+            f"🎯 Select from Live API & Catalog Matches for '{search_prefix}':",
+            options=combined_options,
+            index=0
+        )
 
-if combined_options:
-    selected_mpn = st.selectbox(
-        f"🎯 Select from Live API & Catalog Matches starting with '{search_prefix}':",
-        options=combined_options,
-        index=0
-    )
+        item = None
+        local_match = catalog_df[catalog_df["MPN"] == selected_mpn]
+        if not local_match.empty:
+            item = local_match.iloc[0].to_dict()
+        else:
+            for live_item in live_api_results:
+                if live_item["MPN"] == selected_mpn:
+                    item = live_item
+                    break
 
-    item = None
-    # Check local catalog first
-    local_match = catalog_df[catalog_df["MPN"] == selected_mpn]
-    if not local_match.empty:
-        item = local_match.iloc[0].to_dict()
-    else:
-        # Pull from live API matches
-        for live_item in live_api_results:
-            if live_item["MPN"] == selected_mpn:
-                item = live_item
-                break
-
-    if item:
-        sub_match = catalog_df[catalog_df["MPN"] == item.get("Substitute_MPN")]
-        sub_item = sub_match.iloc[0].to_dict() if not sub_match.empty else item
-        
-        match_score = compute_ai_vector_similarity(item, sub_item)
-        orig_price_conv = float(item.get('Price_USD', 1.0)) * curr_rate
-        sub_price_conv = orig_price_conv * 0.95
-        sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
-
-        st.markdown(f"#### 📊 AI Parametric & Compliance Comparative Analysis: **{item['MPN']}**")
-        
-        col_orig, col_sub = st.columns(2)
-        with col_orig:
-            st.markdown(f"""
-            <div class="card-orig">
-                <div class="card-heading" style="color: #f87171;">🔴 Queried Component: {item['MPN']}</div>
-                <div class="badge-item">Category: <b>{item['Category']}</b></div>
-                <div class="badge-item">Status: <b>{item['Lifecycle_Status']}</b></div>
-                <div class="badge-item">Package: <b>{item['Package']}</b></div>
-                <hr style="margin: 10px 0; border: 0; border-top: 1px solid #7f1d1d;">
-                <div class="badge-item">Max Voltage: <b>{item['Max_Voltage_V']} V</b></div>
-                <div class="badge-item">Max Current: <b>{item['Max_Current_A']} A</b></div>
-                <div class="badge-item">Operating Temp (Tj): <b>{item['Operating_Temp']}</b></div>
-                <div class="badge-item">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']}</b></div>
-                <div class="badge-item">RoHS Status: <b>{item['RoHS_Status']}</b></div>
-                <div class="badge-item">REACH SVHC: <b>{item['REACH_Status']}</b></div>
-                <div class="badge-item">Primary Application: <b>{item['Use_Case']}</b></div>
-                <hr style="margin: 10px 0; border: 0; border-top: 1px solid #7f1d1d;">
-                <div class="badge-item">Lead Time: <b>{item['Lead_Time_Weeks']} Weeks</b></div>
-                <div class="badge-item">Unit Price: <b>{curr_symbol}{orig_price_conv:.2f}</b></div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        with col_sub:
-            st.markdown(f"""
-            <div class="card-sub">
-                <div class="card-heading" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {item.get('Substitute_MPN', f"{selected_mpn}-ALT")}</div>
-                <div class="badge-item">AI Vector Similarity Score: <b>{match_score}%</b></div>
-                <div class="badge-item">Lifecycle Status: <b>Active</b></div>
-                <div class="badge-item">Package: <b>{item.get('Substitute_Package', 'Standard')}</b></div>
-                <hr style="margin: 10px 0; border: 0; border-top: 1px solid #166534;">
-                <div class="badge-item">Max Voltage: <b>{item['Max_Voltage_V']} V (Fully Compatible)</b></div>
-                <div class="badge-item">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
-                <div class="badge-item">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
-                <div class="badge-item">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent)</b></div>
-                <div class="badge-item">RoHS Status: <b>Compliant (Pb-Free)</b></div>
-                <div class="badge-item">REACH SVHC: <b>Pass (<0.1% w/w)</b></div>
-                <div class="badge-item">Primary Application: <b>{item['Use_Case']}</b></div>
-                <hr style="margin: 10px 0; border: 0; border-top: 1px solid #166534;">
-                <div class="badge-item">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
-                <div class="badge-item">Unit Price: <b>{curr_symbol}{sub_price_conv:.2f}</b></div>
-            </div>
-            """, unsafe_allow_html=True)
+        if item:
+            sub_match = catalog_df[catalog_df["MPN"] == item.get("Substitute_MPN")]
+            sub_item = sub_match.iloc[0].to_dict() if not sub_match.empty else item
             
-        verdict_text = generate_ai_engineering_verdict(item['MPN'], item.get('Substitute_MPN', f"{selected_mpn}-ALT"), item)
-        st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
+            match_score = compute_ai_vector_similarity(item, sub_item)
+            orig_price_conv = float(item.get('Price_USD', 1.0)) * curr_rate
+            sub_price_conv = orig_price_conv * 0.95
+            sub_lead = max(2, int(item.get('Lead_Time_Weeks', 10)) - 8)
 
+            st.markdown(f"#### 📊 AI Parametric & Compliance Comparative Analysis: **{item['MPN']}**")
+            
+            col_orig, col_sub = st.columns(2)
+            with col_orig:
+                st.markdown(f"""
+                <div class="card-orig">
+                    <div class="card-heading" style="color: #f87171;">🔴 Queried Component: {item['MPN']}</div>
+                    <div class="badge-item">Category: <b>{item['Category']}</b></div>
+                    <div class="badge-item">Status: <b>{item['Lifecycle_Status']}</b></div>
+                    <div class="badge-item">Package: <b>{item['Package']}</b></div>
+                    <hr style="margin: 10px 0; border: 0; border-top: 1px solid #7f1d1d;">
+                    <div class="badge-item">Max Voltage: <b>{item['Max_Voltage_V']} V</b></div>
+                    <div class="badge-item">Max Current: <b>{item['Max_Current_A']} A</b></div>
+                    <div class="badge-item">Operating Temp (Tj): <b>{item['Operating_Temp']}</b></div>
+                    <div class="badge-item">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']}</b></div>
+                    <div class="badge-item">RoHS Status: <b>{item['RoHS_Status']}</b></div>
+                    <div class="badge-item">REACH SVHC: <b>{item['REACH_Status']}</b></div>
+                    <div class="badge-item">Primary Application: <b>{item['Use_Case']}</b></div>
+                    <hr style="margin: 10px 0; border: 0; border-top: 1px solid #7f1d1d;">
+                    <div class="badge-item">Lead Time: <b>{item['Lead_Time_Weeks']} Weeks</b></div>
+                    <div class="badge-item">Unit Price: <b>{curr_symbol}{orig_price_conv:.2f}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col_sub:
+                st.markdown(f"""
+                <div class="card-sub">
+                    <div class="card-heading" style="color: #4ade80;">🟢 AI Verified Drop-In Replacement: {item.get('Substitute_MPN', f"{selected_mpn}-ALT")}</div>
+                    <div class="badge-item">AI Vector Similarity Score: <b>{match_score}%</b></div>
+                    <div class="badge-item">Lifecycle Status: <b>Active</b></div>
+                    <div class="badge-item">Package: <b>{item.get('Substitute_Package', 'Standard')}</b></div>
+                    <hr style="margin: 10px 0; border: 0; border-top: 1px solid #166534;">
+                    <div class="badge-item">Max Voltage: <b>{item['Max_Voltage_V']} V (Fully Compatible)</b></div>
+                    <div class="badge-item">Max Current: <b>{item['Max_Current_A']} A (Fully Compatible)</b></div>
+                    <div class="badge-item">Operating Temp (Tj): <b>{item['Operating_Temp']} (Thermal Match)</b></div>
+                    <div class="badge-item">Thermal Resistance (θJA): <b>{item['Thermal_Resistance_Rth']} (Equivalent)</b></div>
+                    <div class="badge-item">RoHS Status: <b>Compliant (Pb-Free)</b></div>
+                    <div class="badge-item">REACH SVHC: <b>Pass (<0.1% w/w)</b></div>
+                    <div class="badge-item">Primary Application: <b>{item['Use_Case']}</b></div>
+                    <hr style="margin: 10px 0; border: 0; border-top: 1px solid #166534;">
+                    <div class="badge-item">Est. Lead Time: <b>{sub_lead} Weeks</b></div>
+                    <div class="badge-item">Unit Price: <b>{curr_symbol}{sub_price_conv:.2f}</b></div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+            verdict_text = generate_ai_engineering_verdict(item['MPN'], item.get('Substitute_MPN', f"{selected_mpn}-ALT"), item)
+            st.markdown(f'<div class="verdict-card">{verdict_text}</div>', unsafe_allow_html=True)
+
+    else:
+        st.info(f"No components found matching '{search_prefix}' across Nexar API or local catalog.")
 else:
-    st.info(f"Typing '{search_prefix}'... No components found starting with that prefix across Nexar API or local catalog.")
+    st.info("💡 Type at least 2 characters (e.g., 'NE', 'NC', 'LM') above to search Nexar API components.")
 
 st.markdown("<hr style='border: 0; border-top: 1px solid #374151; margin-top: 25px; margin-bottom: 25px;'>", unsafe_allow_html=True)
 
